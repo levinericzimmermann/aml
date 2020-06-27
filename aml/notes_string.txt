@@ -1,0 +1,64 @@
+# was noch fehlt: schlagen auf decke!
+
+# es gibt bestimmte spieltechniken, die nicht kombiniert werden können und zu derselben
+# on-off kategorie gehören. diese solltest du sortieren und zusammenfassen! vielleicht als
+# dieselbe klasse, und bei der objekt initalisierung wird dann entschieden, welche
+# variante davon gemeint ist.
+
+# (1) artikulation:
+#   - detache => STANDARD
+#   - Stacatto
+#   - Tenuto
+
+# (2) Akzent
+#   - normal
+#   - stark
+
+# (3) flageolet
+#   - natürliches
+#   - künstliches
+
+# (3) ANDERE SPEZIELLE ITEMS, die nur bei Anschlag 'arco' funktionieren:
+#   - triller (mit Tonhöhenangabe in Klammer dahinter!)
+#   - tremolo (drei balken heißt so schnell wie möglich)
+#   - trem. irreg.
+
+# on-off-eigenschaften
+# falls mit STANDARD anfängt, muss nicht notiert werden!
+
+# (1) on-off-0: anschlag-technik. DIESE BESTIMMEN DIE SAMPLE WAHL!!
+#   - arco => STANDARD
+#   - pizz
+#   - bartok-pizz
+#   - col-legno-battuto
+#   - col-legno-tratto
+#   - tapping: linke obere seite des cellos mit linker hand
+#   - tapping: körper oben links mit linker hand
+
+# (2) on-off-1: position / klangfarbe:
+# unterschiedliche Klangfarben abhängig von Bogenposition, Bogengeschwindigkeit und
+# Bogendruck:
+#   - al dito
+#   - alto sul tasto
+#   - molto sul tasto
+#   - tasto
+#   - poco sul tasto
+#   - ordinario => STANDARD
+#   - poco sul pont
+#   - pont
+#   - pont estr,
+#   - sol legno del ponticello
+
+# (3) on-off-2: vibrato-stärke
+# unterschiedliche Stärken von Vibrato:
+#   - Non vibrato -> kein vibrato
+#   - Molto vibrato -> wenig vibrato
+#   - Vibrato ordinario -> gewöhnliches vibrato => STANDARD
+#   - Poco vibrato -> stärkeres vibrato
+# => aber willst du für dieses Stück nicht einfach immer versuchen kein vibrato zu haben?
+
+# vielleicht kannst du Spieltechniken unterscheiden zwischen:
+#   (1) Techniken die Töne betonen
+#   (2) Techniken die Töne abschwächen
+
+

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE sonic-visualiser>
+<sv>
+  <data>
+    <model id="210" name="qiroah_71_25.wav: Smoothed Pitch Track" sampleRate="44100" start="4608" end="1815062" type="sparse" dimensions="3" resolution="256" notifyOnAdd="true" dataset="209" subtype="flexinote" valueQuantization="0" minimum="96.9563" maximum="165.637" units="Hz" />
+    <dataset id="209" dimensions="3">
+      <point frame="4608" value="118.186" duration="25344" level="0.787402" label="" />
+      <point frame="34304" value="151.602" duration="28160" level="0.787402" label="" />
+      <point frame="62720" value="160.445" duration="49920" level="0.787402" label="" />
+      <point frame="112896" value="160.18" duration="44032" level="0.787402" label="" />
+      <point frame="160768" value="164.626" duration="14080" level="0.787402" label="" />
+      <point frame="175104" value="160.038" duration="72960" level="0.787402" label="" />
+      <point frame="248320" value="152.151" duration="23040" level="0.787402" label="" />
+      <point frame="271616" value="121.472" duration="25088" level="0.787402" label="" />
+      <point frame="296960" value="111.933" duration="13312" level="0.787402" label="" />
+      <point frame="310528" value="103.515" duration="55552" level="0.787402" label="" />
+      <point frame="372992" value="103.757" duration="39680" level="0.787402" label="" />
+      <point frame="415232" value="96.9563" duration="14592" level="0.787402" label="" />
+      <point frame="430080" value="104.744" duration="33792" level="0.787402" label="" />
+      <point frame="468992" value="105.896" duration="13056" level="0.787402" label="" />
+      <point frame="488448" value="106.647" duration="16896" level="0.787402" label="" />
+      <point frame="512000" value="119.566" duration="42240" level="0.787402" label="" />
+      <point frame="560384" value="165.583" duration="10240" level="0.787402" label="" />
+      <point frame="572416" value="165.382" duration="9728" level="0.787402" label="" />
+      <point frame="582400" value="165.637" duration="10496" level="0.787402" label="" />
+      <point frame="595712" value="155.215" duration="20224" level="0.787402" label="" />
+      <point frame="616192" value="116.206" duration="19712" level="0.787402" label="" />
+      <point frame="636160" value="104.69" duration="71424" level="0.787402" label="" />
+      <point frame="707840" value="105.036" duration="60672" level="0.787402" label="" />
+      <point frame="973056" value="101.601" duration="10240" level="0.787402" label="" />
+      <point frame="983552" value="103.957" duration="27648" level="0.787402" label="" />
+      <point frame="1011456" value="122.009" duration="9216" level="0.787402" label="" />
+      <point frame="1022976" value="117.855" duration="13568" level="0.787402" label="" />
+      <point frame="1037056" value="119.78" duration="43008" level="0.787402" label="" />
+      <point frame="1080320" value="119.424" duration="23040" level="0.787402" label="" />
+      <point frame="1106944" value="154.591" duration="29440" level="0.787402" label="" />
+      <point frame="1136640" value="161.45" duration="174848" level="0.787402" label="" />
+      <point frame="1313792" value="120.169" duration="12032" level="0.787402" label="" />
+      <point frame="1326592" value="119.558" duration="12544" level="0.787402" label="" />
+      <point frame="1339392" value="150.948" duration="27392" level="0.787402" label="" />
+      <point frame="1367040" value="160.935" duration="65536" level="0.787402" label="" />
+      <point frame="1432832" value="144.045" duration="13824" level="0.787402" label="" />
+      <point frame="1451008" value="160.066" duration="88576" level="0.787402" label="" />
+      <point frame="1547264" value="151.097" duration="115968" level="0.787402" label="" />
+    </dataset>
+  </data>
+  <display>
+    <layer id="208" type="flexinotes" name="Notes" model="210"  verticalScale="0" scaleMinimum="34" scaleMaximum="77"  colourName="Bright Blue" colour="#1e96ff" darkBackground="true" />
+  </display>
+</sv>

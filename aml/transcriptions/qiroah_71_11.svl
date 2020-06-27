@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE sonic-visualiser>
+<sv>
+  <data>
+    <model id="157" name="qiroah_71_11.wav: Smoothed Pitch Track" sampleRate="44100" start="4608" end="863713" type="sparse" dimensions="3" resolution="256" notifyOnAdd="true" dataset="156" subtype="flexinote" valueQuantization="0" minimum="99.5549" maximum="164.069" units="Hz" />
+    <dataset id="156" dimensions="3">
+      <point frame="4608" value="99.5549" duration="10752" level="0.787402" label="" />
+      <point frame="16640" value="99.6506" duration="11776" level="0.787402" label="" />
+      <point frame="34816" value="115.228" duration="9472" level="0.787402" label="" />
+      <point frame="45056" value="124.96" duration="8448" level="0.787402" label="" />
+      <point frame="73984" value="123.26" duration="45824" level="0.787402" label="" />
+      <point frame="123904" value="153.195" duration="36864" level="0.787402" label="" />
+      <point frame="161024" value="162.169" duration="136960" level="0.787402" label="" />
+      <point frame="298240" value="157.136" duration="44544" level="0.787402" label="" />
+      <point frame="343808" value="120.602" duration="18432" level="0.787402" label="" />
+      <point frame="367616" value="119.38" duration="8704" level="0.787402" label="" />
+      <point frame="380160" value="150.379" duration="12288" level="0.787402" label="" />
+      <point frame="392960" value="164.069" duration="34304" level="0.787402" label="" />
+      <point frame="429312" value="144.781" duration="6400" level="0.787402" label="" />
+      <point frame="435968" value="163.024" duration="133632" level="0.787402" label="" />
+      <point frame="572672" value="153.452" duration="19456" level="0.787402" label="" />
+      <point frame="592384" value="153.47" duration="109824" level="0.787402" label="" />
+    </dataset>
+  </data>
+  <display>
+    <layer id="155" type="flexinotes" name="Notes" model="157"  verticalScale="0" scaleMinimum="34" scaleMaximum="77"  colourName="Bright Blue" colour="#1e96ff" darkBackground="true" />
+  </display>
+</sv>

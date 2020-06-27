@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE sonic-visualiser>
+<sv>
+  <data>
+    <model id="167" name="qiroah_71_13.wav: Smoothed Pitch Track" sampleRate="44100" start="11520" end="571612" type="sparse" dimensions="3" resolution="256" notifyOnAdd="true" dataset="166" subtype="flexinote" valueQuantization="0" minimum="149.511" maximum="244.929" units="Hz" />
+    <dataset id="166" dimensions="3">
+      <point frame="11520" value="149.511" duration="7168" level="0.787402" label="" />
+      <point frame="18944" value="170.768" duration="8448" level="0.787402" label="" />
+      <point frame="27648" value="201.42" duration="57600" level="0.787402" label="" />
+      <point frame="87040" value="202.642" duration="23040" level="0.787402" label="" />
+      <point frame="110336" value="202.439" duration="55040" level="0.787402" label="" />
+      <point frame="167168" value="200.246" duration="28928" level="0.787402" label="" />
+      <point frame="196352" value="195.457" duration="11520" level="0.787402" label="" />
+      <point frame="208128" value="210.694" duration="29696" level="0.787402" label="" />
+      <point frame="240128" value="239.482" duration="12800" level="0.787402" label="" />
+      <point frame="253184" value="244.929" duration="28416" level="0.787402" label="" />
+      <point frame="282112" value="240.237" duration="9472" level="0.787402" label="" />
+      <point frame="291840" value="211.681" duration="54528" level="0.787402" label="" />
+      <point frame="348160" value="212.828" duration="103168" level="0.787402" label="" />
+    </dataset>
+  </data>
+  <display>
+    <layer id="165" type="flexinotes" name="Notes" model="167"  verticalScale="0" scaleMinimum="34" scaleMaximum="77"  colourName="Bright Blue" colour="#1e96ff" darkBackground="true" />
+  </display>
+</sv>

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE sonic-visualiser>
+<sv>
+  <data>
+    <model id="57" name="qiroah_59_13.wav: Smoothed Pitch Track" sampleRate="44100" start="5120" end="1588256" type="sparse" dimensions="3" resolution="256" notifyOnAdd="true" dataset="56" subtype="flexinote" valueQuantization="0" minimum="95.8543" maximum="297.29" units="Hz" />
+    <dataset id="56" dimensions="3">
+      <point frame="5120" value="95.8543" duration="7424" level="0.787402" label="" />
+      <point frame="19200" value="97.332" duration="36352" level="0.787402" label="" />
+      <point frame="55808" value="111.607" duration="32000" level="0.787402" label="" />
+      <point frame="91392" value="143.207" duration="28928" level="0.787402" label="" />
+      <point frame="120576" value="149.956" duration="62464" level="0.787402" label="" />
+      <point frame="185344" value="151.522" duration="21760" level="0.787402" label="" />
+      <point frame="210432" value="151.79" duration="7168" level="0.787402" label="" />
+      <point frame="223744" value="140.867" duration="23808" level="0.787402" label="" />
+      <point frame="247808" value="149.682" duration="21504" level="0.787402" label="" />
+      <point frame="277248" value="144.585" duration="7424" level="0.787402" label="" />
+      <point frame="285696" value="146.494" duration="10496" level="0.787402" label="" />
+      <point frame="297728" value="185.961" duration="65280" level="0.787402" label="" />
+      <point frame="368384" value="185.005" duration="36096" level="0.787402" label="" />
+      <point frame="410624" value="186.701" duration="9728" level="0.787402" label="" />
+      <point frame="424448" value="184.495" duration="35840" level="0.787402" label="" />
+      <point frame="461312" value="197.286" duration="11264" level="0.787402" label="" />
+      <point frame="472832" value="228.714" duration="9216" level="0.787402" label="" />
+      <point frame="482304" value="195.666" duration="30464" level="0.787402" label="" />
+      <point frame="513024" value="215.043" duration="16384" level="0.787402" label="" />
+      <point frame="529664" value="196.272" duration="20480" level="0.787402" label="" />
+      <point frame="550400" value="229.746" duration="6912" level="0.787402" label="" />
+      <point frame="557568" value="196.762" duration="157952" level="0.787402" label="" />
+      <point frame="896000" value="157.2" duration="9216" level="0.787402" label="" />
+      <point frame="905472" value="190.066" duration="16128" level="0.787402" label="" />
+      <point frame="921856" value="202.705" duration="13824" level="0.787402" label="" />
+      <point frame="935936" value="225.372" duration="11520" level="0.787402" label="" />
+      <point frame="949248" value="219.926" duration="19200" level="0.787402" label="" />
+      <point frame="971520" value="219.521" duration="12800" level="0.787402" label="" />
+      <point frame="984576" value="279.733" duration="29184" level="0.787402" label="" />
+      <point frame="1014016" value="297.29" duration="31744" level="0.787402" label="" />
+      <point frame="1046016" value="283.177" duration="28928" level="0.787402" label="" />
+      <point frame="1075200" value="223.097" duration="26368" level="0.787402" label="" />
+      <point frame="1102080" value="221.498" duration="10752" level="0.787402" label="" />
+      <point frame="1113344" value="195.555" duration="15104" level="0.787402" label="" />
+      <point frame="1128704" value="183.424" duration="9472" level="0.787402" label="" />
+      <point frame="1142272" value="187.804" duration="38144" level="0.787402" label="" />
+      <point frame="1181184" value="146.009" duration="26112" level="0.787402" label="" />
+      <point frame="1207552" value="180.284" duration="17920" level="0.787402" label="" />
+      <point frame="1227008" value="140.788" duration="39424" level="0.787402" label="" />
+      <point frame="1286656" value="135.205" duration="15360" level="0.787402" label="" />
+      <point frame="1302272" value="147.166" duration="44800" level="0.787402" label="" />
+      <point frame="1347328" value="139.371" duration="26112" level="0.787402" label="" />
+      <point frame="1373696" value="109.867" duration="19968" level="0.787402" label="" />
+      <point frame="1393920" value="103.226" duration="9728" level="0.787402" label="" />
+      <point frame="1403904" value="97.2132" duration="85760" level="0.787402" label="" />
+    </dataset>
+  </data>
+  <display>
+    <layer id="55" type="flexinotes" name="Notes" model="57"  verticalScale="0" scaleMinimum="34" scaleMaximum="77"  colourName="Bright Blue" colour="#1e96ff" darkBackground="true" />
+  </display>
+</sv>

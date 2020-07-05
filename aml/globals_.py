@@ -1,6 +1,8 @@
+import abc
 import functools
 import numpy as np
 import operator
+import os
 
 import abjad
 
@@ -30,13 +32,21 @@ def _filter_auxiliary_pitches(scale: tuple) -> tuple:
     return tuple(p for idx, p in enumerate(scale) if idx not in auxiliary_pitches)
 
 
+AVAILABLE_VERSES = tuple(
+    (splitted_path[1], splitted_path[2])
+    for splitted_path in (
+        path[:-4].split("_") for path in os.listdir("aml/transcriptions")
+    )
+)
+
+
 ORCHESTRATION = mus.Orchestration(
     *tuple(
         mus.MetaTrack(name, n_staves, volume, panning)
         for name, n_staves, volume, panning in (
-            ("violin", 2, 1, 0.2),
-            ("viola", 2, 1, 0.4),
-            ("cello", 2, 1, 0.6),
+            ("violin", 3, 1, 0.2),
+            ("viola", 3, 1, 0.4),
+            ("cello", 3, 1, 0.6),
             ("keyboard", 3, 1, 0.8),
         )
     )
@@ -65,7 +75,7 @@ RATIO2PITCHCLASS = {
             "dstf",
             "dftf",
             "dqf",
-            "efxf",
+            "dxs",  # instead of "efxf",
             "etrf",
             "estf",
             "f",
@@ -77,9 +87,43 @@ RATIO2PITCHCLASS = {
             "atrf",
             "astf",
             "aftf",
-            "bfxf",
+            "axs",  # instead of "bfxf"
             "btrf",
             "bf",
+        ),
+    )
+}
+
+
+MIDI_PITCH2ABJAD_PITCH = tuple(abjad.NamedPitch(n - 60) for n in range(127))
+
+
+RATIO2ARTIFICAL_HARMONIC_PITCHCLASS_AND_ARTIFICIAL_HARMONIC_OCTAVE = {
+    ratio.register(0): pitch
+    for ratio, pitch in zip(
+        functools.reduce(operator.add, INTONATIONS_PER_SCALE_DEGREE),
+        (
+            ("fxf", 0),
+            ("af", -1),
+            ("fxs", 0),
+            ("gstf", 0),
+            ("betf", -1),
+            ("gqf", 0),
+            ("gxs", 0),  # instead of ("afxf", 0),
+            ("ctrf", 0),
+            ("astf", 0),
+            ("bf", 0),
+            ("drf", 0),
+            ("bqf", 0),
+            ("cqf", 1),
+            ("etrf", 0),
+            ("c", 1),
+            ("dtrf", 1),
+            ("fstf", 0),
+            ("dftf", 1),
+            ("fxs", 0),  # instead of ("gfxf", 0)
+            ("esxf", 0),
+            ("eff", 1),
         ),
     )
 }
@@ -93,8 +137,98 @@ A_CONCERT_PITCH = 442  # a' with 442 Hz
 CONCERT_PITCH = A_CONCERT_PITCH / (pow(2, 1 / 12) ** 9)
 
 
+class _AdaptedInstrument(abc.ABC):
+    def __init__(self):
+        self._normal_pitches = self._find_pitches(self.normal_pitch_range)
+        self._harmonic_pitches = self._find_pitches(self.harmonic_pitch_range)
+        self._available_pitches = tuple(
+            sorted(self.normal_pitches + self.harmonic_pitches)
+        )
+
+    @abc.abstractproperty
+    def normal_pitch_range(self) -> tuple:
+        raise NotImplementedError
+
+    @abc.abstractproperty
+    def harmonic_pitch_range(self) -> tuple:
+        raise NotImplementedError
+
+    @abc.abstractproperty
+    def artifical_harmonic(self) -> int:
+        raise NotImplementedError
+
+    @property
+    def scale(self) -> tuple:
+        return SCALE_PER_INSTRUMENT[self.name]
+
+    def _find_pitches(self, pitch_range: tuple) -> tuple:
+        return tuple(
+            sorted(
+                functools.reduce(
+                    operator.add,
+                    (
+                        ji.find_all_available_pitches_in_a_specified_range(
+                            p, *pitch_range
+                        )
+                        for p in self.scale
+                    ),
+                )
+            )
+        )
+
+    @property
+    def normal_pitches(self) -> tuple:
+        return self._normal_pitches
+
+    @property
+    def harmonic_pitches(self) -> tuple:
+        return self._harmonic_pitches
+
+    @property
+    def available_pitches(self) -> tuple:
+        return self._available_pitches
+
+
+class _AdaptedCello(abjad.Cello, _AdaptedInstrument):
+    normal_pitch_range = (ji.r(1, 4), ji.r(16, 15))
+    harmonic_pitch_range = (ji.r(5, 4), ji.r(5, 1))
+    artifical_harmonic = 5
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _AdaptedInstrument.__init__(self)
+
+
+class _AdaptedViola(abjad.Viola, _AdaptedInstrument):
+    normal_pitch_range = (ji.r(1, 2), ji.r(32, 15))
+    harmonic_pitch_range = (ji.r(2, 1), ji.r(8, 1))
+    artifical_harmonic = 4
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _AdaptedInstrument.__init__(self)
+
+
+class _AdaptedViolin(abjad.Violin, _AdaptedInstrument):
+    normal_pitch_range = (ji.r(3, 4), ji.r(3, 1))
+    harmonic_pitch_range = (ji.r(3, 1), ji.r(12, 1))
+    artifical_harmonic = 4
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _AdaptedInstrument.__init__(self)
+
+
+CELLO = _AdaptedCello()
+VIOLA = _AdaptedViola()
+VIOLIN = _AdaptedViolin()
+
+
+INSTRUMENT_NAME2ADAPTED_INSTRUMENT = {"cello": CELLO, "violin": VIOLIN, "viola": VIOLA}
+
+
 def _detect_closeness_from_pitch_x_to_pitch_y(
-    intonations_per_scale_degree: tuple
+    intonations_per_scale_degree: tuple,
 ) -> dict:
     closeness_from_pitch_x_to_pitch_y = {}
     harmonicity_net = {}

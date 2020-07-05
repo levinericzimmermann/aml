@@ -1,6 +1,10 @@
 import functools
 import itertools
 import operator
+import os
+import json
+import pickle
+import uuid
 
 import abjad
 import quicktions as fractions
@@ -26,13 +30,10 @@ class Verse(mus.Segment):
         # removing orientation lines in all-instruments-score
         sco = abjad.Score([])
         for track_name in self.orchestration:
-            abjad_data = abjad.mutate(getattr(self, track_name).abjad).copy()[-1]
-            """
-            if track_name in ("cello", "violin", "viola"):
-                abjad_data = abjad_data[-1]
+            if track_name == "keyboard":
+                abjad_data = abjad.mutate(getattr(self, track_name).abjad).copy()[-1]
             else:
-                abjad_data = abjad_data[-2:]
-            """
+                abjad_data = abjad.mutate(getattr(self, track_name).abjad).copy()[1]
             sco.append(abjad_data)
         return sco
 
@@ -41,6 +42,9 @@ class VerseMaker(mus.SegmentMaker):
     ratio2pitchclass_dict = globals_.RATIO2PITCHCLASS
     orchestration = globals_.ORCHESTRATION
     _segment_class = Verse
+    _pickled_objects_path = "aml/transobjects"
+    tools.igmkdir(_pickled_objects_path)
+    _json_path = "{}/transobjects.json".format(_pickled_objects_path)
 
     def __init__(
         self,
@@ -53,8 +57,11 @@ class VerseMaker(mus.SegmentMaker):
         harmonic_tolerance: float = 0.5,
         max_rest_size_to_ignore: fractions.Fraction = fractions.Fraction(1, 4),
         maximum_deviation_from_center: float = 0.5,
+        # rhythmical orientation data
+        ro_temperature: float = 0.7,
+        ro_density: float = 0.5,
     ) -> None:
-        self.transcription = transcriptions.QiroahTranscription.from_complex_scale(
+        self.transcription = self._get_transcription(
             chapter=chapter,
             verse=verse,
             time_transcriber=time_transcriber,
@@ -74,19 +81,93 @@ class VerseMaker(mus.SegmentMaker):
 
         self.assign_harmonic_pitches_to_slices(harmonic_tolerance)
         self.assign_harmonic_fields_to_slices()
+
+        self.rhythmic_orientation_indices = self._detect_rhythmic_orientation(
+            temperature=ro_temperature, density=ro_density
+        )
+
         self.melodic_orientation = self._make_melodic_orientation_system()
+        self.rhythmic_orientation = self._make_rhythmic_orientation_system()
 
         super().__init__()
 
         self.attach(
-            violin=strings.SilentStringMaker(abjad.Violin()),
-            viola=strings.SilentStringMaker(abjad.Viola()),
-            cello=strings.SilentStringMaker(abjad.Cello()),
+            violin=strings.SilentStringMaker(globals_.VIOLIN),
+            viola=strings.SilentStringMaker(globals_.VIOLA),
+            cello=strings.SilentStringMaker(globals_.CELLO),
             keyboard=keyboard.SilentKeyboardMaker(),
         )
 
+    @classmethod
+    def _get_transcription(cls, **kwargs) -> transcriptions.Transcription:
+        key = sorted(
+            (
+                (kw, kwargs[kw].json_key)
+                if kw == "time_transcriber"
+                else (kw, kwargs[kw])
+                for kw in kwargs
+            ),
+            key=operator.itemgetter(0),
+        )
+        key = str(tuple(map(operator.itemgetter(1), key)))
+
+        with open(cls._json_path, "r") as f:
+            transobjects = json.loads(f.read())
+
+        try:
+            path = transobjects[key]
+
+        except KeyError:
+            transcription = transcriptions.QiroahTranscription.from_complex_scale(
+                **kwargs
+            )
+
+            path = "{}/trans_{}_{}_{}".format(
+                cls._pickled_objects_path,
+                kwargs["chapter"],
+                kwargs["verse"],
+                uuid.uuid4().hex,
+            )
+
+            while path in os.listdir(cls._pickled_objects_path):
+                path = "{}/trans_{}_{}_{}".format(
+                    cls._pickled_objects_path,
+                    kwargs["chapter"],
+                    kwargs["verse"],
+                    uuid.uuid4().hex,
+                )
+
+            transobjects.update({key: path})
+
+            with open(path, "wb") as f:
+                pickle.dump(transcription, f)
+
+            with open(cls._json_path, "w") as f:
+                f.write(json.dumps(transobjects))
+
+        with open(path, "rb") as f:
+            transcription = pickle.load(f)
+
+        return transcription
+
+    @staticmethod
+    def _attach_double_barlines(staff, loop_size: int) -> None:
+        for idx, bar in enumerate(staff):
+            if idx % loop_size == 0:
+                abjad.attach(abjad.BarLine("||", format_slot="before"), bar[0])
+
     def __call__(self) -> Verse:
         verse = super().__call__()
+
+        loop_size = self.transcription.spread_metrical_loop.loop_size
+        for track_name in self.orchestration:
+            for staff in getattr(verse, track_name).abjad:
+                if type(staff) == abjad.StaffGroup:
+                    for sub_staff in staff:
+                        self._attach_double_barlines(sub_staff, loop_size)
+                else:
+                    self._attach_double_barlines(staff, loop_size)
+
         # attach verse attribute (name or number of verse) to resulting verse object
         verse.verse = self.verse
         return verse
@@ -135,6 +216,29 @@ class VerseMaker(mus.SegmentMaker):
         return ns
 
     @staticmethod
+    def _register_harmonic_pitch(
+        melody_pitch0: ji.JIPitch, melody_pitch1: ji.JIPitch, harmonic_pitch: ji.JIPitch
+    ) -> ji.JIPitch:
+        normalized_hp = harmonic_pitch.normalize()
+        available_versions = tuple(
+            p
+            for p in globals_.INSTRUMENT_NAME2ADAPTED_INSTRUMENT[
+                globals_.PITCH2INSTRUMENT[normalized_hp]
+            ].available_pitches
+            if p.normalize() == normalized_hp
+        )
+        pitches2compare = (melody_pitch0, melody_pitch1)
+        version_fitness_pairs = []
+        for version in available_versions:
+            harmonicity = 0
+            for p2c in pitches2compare:
+                if p2c:
+                    harmonicity += (p2c - version).harmonicity_simplified_barlow
+            version_fitness_pairs.append((version, harmonicity))
+
+        return max(version_fitness_pairs, key=operator.itemgetter(1))[0]
+
+    @staticmethod
     def _help_complex_melodic_intervals(
         tolerance: float,
         sd0: int,
@@ -158,7 +262,9 @@ class VerseMaker(mus.SegmentMaker):
             available_pitches = tuple(
                 p
                 for p in available_pitches
-                if globals_.PITCH2SCALE_DEGREE[p] not in (sd0, sd1)
+                # forbid pitches that are either in already used scale_degrees or that are
+                # part of auxiliary scale-degrees 4 and 7.
+                if globals_.PITCH2SCALE_DEGREE[p] not in (sd0, sd1, 3, 6)
             )
             ap_closeness_to_p0, ap_closeness_to_p1 = (
                 tuple(
@@ -178,8 +284,12 @@ class VerseMaker(mus.SegmentMaker):
                 harmonic_pitch = max(
                     available_pitches_and_fitness, key=operator.itemgetter(1)
                 )[0]
-                slice0.harmonic_pitch = harmonic_pitch
-                slice1.harmonic_pitch = harmonic_pitch
+
+                registered_harmonic_pitch = VerseMaker._register_harmonic_pitch(
+                    slice0.melody_pitch, slice1.melody_pitch, harmonic_pitch
+                )
+                slice0.harmonic_pitch = registered_harmonic_pitch
+                slice1.harmonic_pitch = registered_harmonic_pitch
 
     @staticmethod
     def _help_tonality_flux(
@@ -258,8 +368,15 @@ class VerseMaker(mus.SegmentMaker):
                 for mp, avp in zip((p0, p1), available_pitches_per_tone)
             )
 
-        slice0.harmonic_pitch = hp0
-        slice1.harmonic_pitch = hp1
+        registered_hp0 = VerseMaker._register_harmonic_pitch(
+            slice0.melody_pitch, None, hp0
+        )
+        registered_hp1 = VerseMaker._register_harmonic_pitch(
+            slice1.melody_pitch, None, hp1
+        )
+
+        slice0.harmonic_pitch = registered_hp0
+        slice1.harmonic_pitch = registered_hp1
 
     def assign_harmonic_pitches_to_slices(self, tolerance: float = 0.5) -> None:
         for slice0, slice1 in zip(self.bread, self.bread[1:]):
@@ -469,7 +586,9 @@ class VerseMaker(mus.SegmentMaker):
                     globals_.PITCH2INSTRUMENT[tone.pitch.normalize()]
                 ]
                 pitch = [tone.pitch]
-                markup = attachments.Markup("\\small {}".format(instrument.short_name))
+                markup = attachments.Markup(
+                    "\\small {}".format(instrument.short_name), direction="up"
+                )
 
             novent = lily.NOvent(
                 pitch=pitch, delay=tone.delay, duration=tone.duration, markup=markup
@@ -484,3 +603,115 @@ class VerseMaker(mus.SegmentMaker):
             )
 
         return orientation
+
+    def _make_rhythmic_orientation_system(self) -> lily.NOventLine:
+        absolute_positions = self.transcription.spread_metrical_loop.get_all_rhythms()
+        absolute_rhythm = tuple(
+            absolute_positions[index] for index in self.rhythmic_orientation_indices
+        )
+        is_first_attack_rest = False
+        if absolute_rhythm[0] != 0:
+            absolute_rhythm = (0,) + absolute_rhythm
+            is_first_attack_rest = True
+
+        relative_rhythm = tuple(
+            b - a
+            for a, b in zip(
+                absolute_rhythm,
+                absolute_rhythm[1:]
+                + (self.transcription.spread_metrical_loop.duration,),
+            )
+        )
+
+        is_first = True
+        orientation = lily.NOventLine([])
+        for rhythm in relative_rhythm:
+            if is_first and is_first_attack_rest:
+                pitch = []
+                is_first = False
+
+            else:
+                pitch = [ji.r(1, 1)]
+
+            novent = lily.NOvent(pitch=pitch, delay=rhythm, duration=rhythm)
+            orientation.append(novent)
+
+        return orientation
+
+    def _detect_rhythmic_orientation(
+        self, density: float = 0.5, temperature: float = 0.65
+    ) -> tuple:
+        """Return indices of beats that are part of rhythmic orientation."""
+
+        for percent in (density, temperature):
+            assert percent >= 0 and percent <= 1
+
+        spread_metrical_loop = self.transcription.spread_metrical_loop
+
+        pairs = spread_metrical_loop.get_all_rhythm_metricitiy_pairs()
+        n_beats = len(pairs)
+        average_distance_between_two_attacks = n_beats / (n_beats * density)
+
+        indices = []
+        for idx, pair in enumerate(pairs):
+            rhythm, metricity = pair
+            primes = spread_metrical_loop.get_primes_of_absolute_rhythm(rhythm)
+            # get responsible slice for the current rhythmical position
+            slice_ = self.bread.find_responsible_slices(rhythm, rhythm + 1)[0]
+
+            # check if point is inhabited by any allowed pitch(es)
+            is_inhabited = False
+            if slice_.harmonic_field:
+                available_instruments = tuple(
+                    spread_metrical_loop.prime_instrument_mapping[prime]
+                    for prime in primes
+                )
+                available_pitches = tuple(
+                    p
+                    for p in slice_.harmonic_field
+                    # only use pitches that are available in the instrument that are
+                    # allowed to play during this beat
+                    if globals_.PITCH2INSTRUMENT[p] in available_instruments
+                    # prohibit auxiliary pitches for rhythmic orientation
+                    and globals_.PITCH2SCALE_DEGREE[p] not in (3, 6)
+                )
+
+                if available_pitches:
+                    is_inhabited = True
+
+            if is_inhabited:
+                ratio = (4, 3, 2)
+
+                if indices:
+                    distance_to_last_index = idx - indices[-1]
+
+                    if distance_to_last_index >= average_distance_between_two_attacks:
+                        energy_by_density_and_equilibrium = 1
+
+                    else:
+                        energy_by_density_and_equilibrium = tools.scale(
+                            (
+                                1,
+                                distance_to_last_index,
+                                average_distance_between_two_attacks,
+                            ),
+                            0,
+                            1,
+                        )[1]
+
+                else:
+                    energy_by_density_and_equilibrium = 1
+
+                energy_items = (
+                    metricity,
+                    energy_by_density_and_equilibrium,
+                    len(available_instruments) / 3,
+                )
+                energy_level = sum(
+                    item * factor for item, factor in zip(energy_items, ratio)
+                )
+                energy_level /= sum(ratio)
+                if energy_level > temperature:
+                    indices.append(idx)
+
+        return tuple(indices)

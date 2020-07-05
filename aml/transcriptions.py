@@ -150,6 +150,40 @@ class TimeTranscriber(object):
 
         return melody
 
+    def __eq__(self, other) -> bool:
+        try:
+            attributes = (
+                "tempo_estimation_method",
+                "n_divisions",
+                "min_tone_size",
+                "min_rest_size",
+                "stretch_factor",
+                "post_stretch_factor",
+                "remove_repeating_pitches",
+            )
+            return all(
+                tuple(
+                    getattr(self, attr) == getattr(other, attr) for attr in attributes
+                )
+            )
+        except AttributeError:
+            return False
+
+    @property
+    def json_key(self) -> tuple:
+        return tuple(
+            getattr(self, attr)
+            for attr in (
+                "tempo_estimation_method",
+                "n_divisions",
+                "min_tone_size",
+                "min_rest_size",
+                "stretch_factor",
+                "post_stretch_factor",
+                "remove_repeating_pitches",
+            )
+        )
+
     def __call__(self, sf_path: str, raw_data: tuple) -> tuple:
         """Return (old.Melody, bars)."""
 
@@ -466,7 +500,7 @@ class Transcription(old.Melody):
             bars,
             frequency_range,
             ratio2pitchclass_dict,
-            tempo,
+            float(tempo),
             spread_metrical_loop,
         )
 
@@ -593,7 +627,7 @@ class QiroahTranscription(Transcription):
                 globals_.FILTERED_INTONATIONS_PER_SCALE_DEGREE,
             )
 
-        return Transcription.from_complex_scale(
+        return super(QiroahTranscription, cls).from_complex_scale(
             svl_path,
             sf_path,
             complex_scale_transcriber,

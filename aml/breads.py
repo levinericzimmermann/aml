@@ -26,6 +26,19 @@ class Slice(object):
         self.harmonic_pitch = harmonic_pitch
         self.harmonic_field = harmonic_field
 
+    def __hash__(self) -> int:
+        hasht = (self.start, self.stop, self.melody_pitch, self.harmonic_pitch)
+
+        if self.harmonic_field:
+            hasht += (tuple(sorted(self.harmonic_field.keys())),)
+        else:
+            hasht += (None,)
+
+        return hash(hasht)
+
+    def __eq__(self, other) -> bool:
+        return hash(self) == hash(other)
+
     def __repr__(self) -> str:
         repr_inner = "({}, {})".format(self.start, self.stop)
         if self.melody_pitch:
@@ -40,6 +53,9 @@ class Slice(object):
 class Bread(object):
     def __init__(self, *slices: Slice):
         self._slices = tuple(slices)
+
+    def index(self, slice_: Slice) -> int:
+        return self._slices.index(slice_)
 
     def __repr__(self) -> str:
         return "Bread({})".format(self._slices)
@@ -59,6 +75,15 @@ class Bread(object):
         return tuple(
             slice_
             for slice_ in self
+            if not (slice_.stop <= start or stop <= slice_.start)
+        )
+
+    def find_indices_of_responsible_slices(
+        self, start: fractions.Fraction, stop: fractions.Fraction
+    ) -> tuple:
+        return tuple(
+            idx
+            for idx, slice_ in enumerate(self)
             if not (slice_.stop <= start or stop <= slice_.start)
         )
 

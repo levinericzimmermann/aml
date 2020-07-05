@@ -251,8 +251,19 @@ class SpreadMetricalLoop(object):
         return self._instrument_prime_mapping
 
     @property
+    def prime_instrument_mapping(self) -> dict:
+        return {
+            prime: instrument
+            for instrument, prime in self.instrument_prime_mapping.items()
+        }
+
+    @property
     def loop_duration(self) -> int:
         return self._loop_duration
+
+    @property
+    def loop_size(self) -> int:
+        return self._loop_size
 
     @property
     def bars(self) -> tuple:
@@ -261,6 +272,20 @@ class SpreadMetricalLoop(object):
     @property
     def n_repetitions(self) -> int:
         return self._n_repetitions
+
+    def get_primes_of_absolute_rhythm(self, absolute_rhythm: float) -> tuple:
+        primes = []
+        for prime in self._absolute_rhythm_and_metricity_per_prime:
+            if (
+                absolute_rhythm
+                in self._absolute_rhythm_and_metricity_per_prime[prime][0]
+            ):
+                primes.append(prime)
+
+        if primes:
+            return tuple(primes)
+
+        raise KeyError("No prime contains absolute rhythm {}.".format(absolute_rhythm))
 
     def get_metricities_for_prime(self, prime: int) -> tuple:
         return self._absolute_rhythm_and_metricity_per_prime[prime][1]
@@ -517,12 +542,11 @@ class ComplexMeterTranscriber(object):
                 (Bar((6, 8)), Bar((3, 4)), Bar((4, 4))),
                 (Bar((6, 8)), Bar((6, 8)), Bar((4, 4))),
                 (Bar((5, 4)), Bar((5, 4))),
-                # (Bar((4, 4)), Bar((4, 4)), Bar((4, 4))),
                 (Bar((4, 4)), Bar((3, 4)), Bar((3, 4)), Bar((2, 4))),
-                # (Bar((2, 4)), Bar((6, 8)), Bar((4, 4)), Bar((3, 4))),
+                (Bar((2, 4)), Bar((6, 8)), Bar((4, 4)), Bar((3, 4))),
                 (Bar((2, 4)), Bar((6, 8)), Bar((4, 4)), Bar((6, 8))),
-                # (Bar((3, 4)), Bar((2, 4)), Bar((3, 4)), Bar((2, 4))),
-                # (Bar((6, 8)), Bar((2, 4)), Bar((3, 4)), Bar((2, 4))),
+                (Bar((3, 4)), Bar((2, 4)), Bar((3, 4)), Bar((2, 4))),
+                (Bar((6, 8)), Bar((2, 4)), Bar((3, 4)), Bar((2, 4))),
             )
         ),
     )

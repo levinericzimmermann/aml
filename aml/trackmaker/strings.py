@@ -44,12 +44,16 @@ class String(mus.Track):
             abjad.LilyPondLiteral("\\accidentalStyle dodecaphonic", "before"),
             abjad_data[0][0][0],
         )
-        abjad.attach(
-            abjad.LilyPondLiteral("\\magnifyStaff #4/7", "before"), abjad_data[0][0][0]
-        )
+        abjad_data[2].lilypond_type = "RhythmicStaff"
+        for orientation_staff in (abjad_data[0], abjad_data[2]):
+            abjad.attach(
+                abjad.LilyPondLiteral("\\magnifyStaff #4/7", "before"),
+                orientation_staff[0][0],
+            )
+
         abjad.attach(
             abjad.LilyPondLiteral("\\accidentalStyle dodecaphonic-first", "before"),
-            abjad_data[-1][0][0],
+            abjad_data[1][0][0],
         )
         super().__init__(abjad_data, sound_engine, resolution)
 
@@ -112,11 +116,14 @@ def _make_samples(sample_paths: tuple) -> tuple:
                         complete_sample_path
                     ][0]
 
-                    dynamic = sample.split("_")[3]
-                    if dynamic in ("p", "v1"):
+                    try:
+                        dynamic = sample.split("_")[3]
+                        if dynamic in ("p", "v1"):
+                            dynamic = 0
+                        else:
+                            dynamic = 1
+                    except IndexError:
                         dynamic = 0
-                    else:
-                        dynamic = 1
 
                     samples.append(
                         Sample(
@@ -137,8 +144,8 @@ class SampleBasedStringSoundEngine(synthesis.BasedCsoundEngine):
             for path in (
                 ".local/share/sounds/Solo_Contrabass",
                 ".local/share/sounds/Solo_Violin",
-                ".local/share/sounds/Cello_Section",
-                ".local/share/sounds/Viola_Section",
+                # ".local/share/sounds/Cello_Section",
+                # ".local/share/sounds/Viola_Section",
             )
         )
     )
@@ -170,7 +177,7 @@ class SampleBasedStringSoundEngine(synthesis.BasedCsoundEngine):
 
         name_of_signals = tuple("aSignal{}".format(idx) for idx in range(n_channels))
 
-        volseg = "kvol linseg 0, 0.05, 1, p3 - 0.1, 1, 0.05, 0"
+        volseg = "kvol linseg 0, 0.1, 1, p3 - 0.2, 1, 0.1, 0"
         diskin2 = "{} diskin2 p4, p5, 0, 1, 6, 4".format(", ".join(name_of_signals))
         summarized = " + ".join(
             tuple(
@@ -180,15 +187,35 @@ class SampleBasedStringSoundEngine(synthesis.BasedCsoundEngine):
             )
         )
         summarized = "aSummarized = ({}) / {}".format(summarized, len(channel2use))
-        out = "out aSummarized * kvol * p6"
+        sig = "asig = aSummarized * kvol * p6"
+        out = "out asig"
 
-        lines = ("instr 1", volseg, diskin2, summarized, out, "endin")
+        lines = (
+            "0dbfs=1",
+            "gisine  ftgen	0,0,4096,10,1",
+            "gaSendL, gaSendR init 0",
+            "nchnls=1",
+            "instr 1",
+            volseg,
+            diskin2,
+            summarized,
+            sig,
+            "gaSendL  =        gaSendL + asig/3",
+            "gaSendR  =        gaSendR + asig/3",
+            out,
+            "endin",
+            "instr 2",
+            "aRvbL,aRvbR reverbsc gaSendL,gaSendR,0.9,7000",
+            "out     (aRvbL + aRvbR) * 0.385",
+            "clear    gaSendL,gaSendR",
+            "endin",
+        )
 
         return "\n".join(lines)
 
     @property
     def sco(self) -> str:
-        lines = []
+        lines = ["i2 0 {}".format(float(self._novent_line.duration))]
         for novent_abs, novent in zip(
             self._novent_line.convert2absolute(), self._novent_line
         ):
@@ -235,8 +262,13 @@ class SampleBasedStringSoundEngine(synthesis.BasedCsoundEngine):
         else:
             pt = ("susvib", "arcovib")
 
-        allowed_samples = tuple(s for s in self.samples if s.playing_technique in pt)
-        frequencies = tuple(s.freq for s in allowed_samples)
+        allowed_samples = tuple(
+            sorted(
+                tuple(s for s in self.samples if s.playing_technique in pt),
+                key=lambda s: s.freq,
+            )
+        )
+        frequencies = tuple(float(s.freq) for s in allowed_samples)
 
         samples = []
         for pitch in novent.pitch:
@@ -369,29 +401,77 @@ class MidiStringSoundEngine(synthesis.SoundEngine):
         mf.export("{}.mid".format(name))
 
 
+class SineStringSoundEngine(synthesis.SineMelodyEngine):
+    def __init__(self, novent_line: lily.NOventLine):
+        novent_line = comprovisation.process_comprovisation_attachments(novent_line)
+        melody = old.Melody(
+            [
+                old.Tone(
+                    ji.JIPitch(novent.pitch[0], multiply=globals_.CONCERT_PITCH),
+                    delay=novent.delay,
+                    duration=novent.duration,
+                )
+                if novent.pitch
+                else old.Tone(mel.TheEmptyPitch, delay=novent.delay)
+                for novent in novent_line
+            ]
+        )
+        super().__init__(melody)
+
+
 # STRING_SOUND_ENGINE = PMStringSoundEngine
-STRING_SOUND_ENGINE = MidiStringSoundEngine
+STRING_SOUND_ENGINE = SampleBasedStringSoundEngine
+# STRING_SOUND_ENGINE = MidiStringSoundEngine
+# STRING_SOUND_ENGINE = SineStringSoundEngine
 
 
 class StringMaker(mus.TrackMaker):
     def __init__(self, instrument: abjad.Instrument) -> None:
         self.instrument = instrument
 
+    def attach_pitches_to_novent(self, pitches: tuple, novent: lily.NOvent) -> None:
+        for p in pitches:
+            assert p in self.instrument.available_pitches
+
+        novent.pitch = pitches
+
+        if pitches[0] in self.instrument.harmonic_pitches:
+            abjad_pitch = lily.convert2abjad_pitch(
+                pitches[0] - ji.r(4, 1), globals_.RATIO2PITCHCLASS
+            )
+            (
+                added_pitch_class,
+                octave_change,
+            ) = globals_.RATIO2ARTIFICAL_HARMONIC_PITCHCLASS_AND_ARTIFICIAL_HARMONIC_OCTAVE[
+                pitches[0].normalize()
+            ]
+            added_pitch = abjad.NamedPitch(
+                abjad.NamedPitchClass(added_pitch_class),
+                octave=int(abjad_pitch.octave) + octave_change,
+            )
+            novent.artifical_harmonic = attachments.ArtificalHarmonicAddedPitch(
+                (abjad_pitch, added_pitch)
+            )
+
     def make_sound_engine(self) -> synthesis.SoundEngine:
         return STRING_SOUND_ENGINE(
-            self._convert_symbolic_novent_line2asterisked_novent_line(self.musdat[-1])
+            self._convert_symbolic_novent_line2asterisked_novent_line(self.musdat[1])
         )
 
     def _prepare_staves(
         self, nline: lily.NOventLine, segment_maker: mus.SegmentMaker
     ) -> old.PolyLine:
-        polyline = [segment_maker.melodic_orientation, nline]
+        polyline = [
+            segment_maker.melodic_orientation,
+            nline,
+            segment_maker.rhythmic_orientation,
+        ]
 
         # add crucial notation elements
-        polyline[-1][0].clef = attachments.Clef(
+        polyline[1][0].clef = attachments.Clef(
             {"cello": "bass", "viola": "alto", "violin": "treble"}[self.instrument.name]
         )
-        polyline[-1][0].margin_markup = attachments.MarginMarkup(
+        polyline[1][0].margin_markup = attachments.MarginMarkup(
             "{}.{}".format(segment_maker.chapter, segment_maker.verse)
         )
 
@@ -447,36 +527,17 @@ class SimpleStringMaker(StringMaker):
 
             if tone.pitch:
                 if tone.pitch.normalize() in self.available_pitches:
-                    pitch = tone.pitch
-                    abjad_pitch = lily.convert2abjad_pitch(
-                        pitch, globals_.RATIO2PITCHCLASS
+                    pitch = tools.find_closest_item(
+                        tone.pitch, self.instrument.available_pitches
                     )
-
-                    while abjad_pitch not in self.instrument.pitch_range:
-                        pitch += ji.r(2, 1)
-                        abjad_pitch = lily.convert2abjad_pitch(
-                            pitch, globals_.RATIO2PITCHCLASS
-                        )
-
                     novent = lily.NOvent(
-                        pitch=[pitch],
                         delay=tone.delay,
                         duration=tone.duration,
                         volume=0.8,
                         hauptstimme=attachments.Hauptstimme(True),
                     )
-                    diff_to_highest_string = (
-                        abjad_pitch.number
-                        - self.instrument.default_tuning.get_pitches_by_string_number(
-                            1
-                        )[0].number
-                    )
 
-                    if diff_to_highest_string > 5:
-                        novent.artifical_harmonic = attachments.ArtificalHarmonic(
-                            {"cello": 5, "viola": 4, "violin": 4}[self.instrument.name]
-                        )
-
+                    self.attach_pitches_to_novent([pitch], novent)
                     nset.append(novent)
 
             else:
@@ -503,16 +564,11 @@ class SimpleStringMaker(StringMaker):
 
             if pitch.normalize() in self.available_pitches:
 
-                pitch = pitch.register(
-                    {"cello": -1, "viola": -1, "violin": 0}[self.instrument.name]
+                novent = lily.NOvent(
+                    delay=h_novent.delay, duration=h_novent.duration, volume=0.75
                 )
 
-                novent = lily.NOvent(
-                    pitch=[pitch],
-                    delay=h_novent.delay,
-                    duration=h_novent.duration,
-                    volume=0.75,
-                )
+                self.attach_pitches_to_novent([pitch], novent)
 
                 if next(add_tremolo):
                     novent.tremolo = attachments.Tremolo()

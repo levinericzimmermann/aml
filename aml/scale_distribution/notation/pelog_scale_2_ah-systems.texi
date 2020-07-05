@@ -1,0 +1,2 @@
+@image{pelog_scale_2_ah-1}
+@c eof

@@ -1,14 +1,16 @@
 import functools
+import itertools
 import json
 import operator
 import subprocess
 
 import abjad
-import quicktions as fractions
+import pyo
+
+import crosstrainer
 
 from mu.mel import ji
 from mu.sco import old
-from mu.utils import infit
 from mu.utils import tools
 
 from mutools import attachments
@@ -16,7 +18,9 @@ from mutools import mus
 from mutools import lily
 from mutools import synthesis
 
+from aml import complex_meters
 from aml import comprovisation
+from aml.keyboard_setups import right_hand_synth as _right_hand_synth
 from aml import globals_
 
 KEYBOARD_SETUP_PATH = "aml/keyboard_setups"
@@ -199,7 +203,7 @@ def _generate_keyboard_mapping_files():
 _generate_keyboard_mapping_files()
 
 
-KEYBOARD_RATIO2PITCH_PER_ZONE = {
+KEYBOARD_RATIO2ABJAD_PITCH_PER_ZONE = {
     zone_name: {
         ratio: globals_.MIDI_PITCH2ABJAD_PITCH[midi_note]
         for midi_note, ratio in zone.items()
@@ -222,7 +226,7 @@ class Keyboard(mus.Track):
 
         for staff in abjad_data[1:]:
             abjad.attach(
-                abjad.LilyPondLiteral("\\accidentalStyle dodecaphonic-first", "before"),
+                abjad.LilyPondLiteral("\\accidentalStyle neo-modern", "before"),
                 staff[0][0],
             )
 
@@ -237,6 +241,7 @@ class Keyboard(mus.Track):
         abjad.attach(
             abjad.LilyPondLiteral("\\magnifyStaff #4/7", "before"), abjad_data[0][0][0]
         )
+        abjad.attach(abjad.Clef("treble^8"), abjad_data[1][0][0][0])
         abjad.attach(abjad.Clef("bass"), abjad_data[1][1][0][0])
 
         super().__init__(abjad_data, sound_engine, resolution)
@@ -248,9 +253,9 @@ class LeftHandKeyboardEngine(synthesis.PyteqEngine):
             novent_line
         )
         super().__init__(
-            # fxp="aml/keyboard_setups/fxp/VibraphoneV-BHumanizednostretching.fxp"
+            fxp="aml/keyboard_setups/fxp/saron_only_sound.fxp"
             # preset='"Erard Player"'
-            preset='"Concert Harp Daily"'
+            # preset='"Concert Harp Daily"'
         )
 
     @property
@@ -259,6 +264,96 @@ class LeftHandKeyboardEngine(synthesis.PyteqEngine):
 
     def render(self, name: str) -> subprocess.Popen:
         return super().render(name, self._novent_line)
+
+
+class RightHandKeyboardEngine(synthesis.PyoEngine):
+    # adapted sine wave generator
+
+    _tail = 0.3  # seconds
+
+    def __init__(self, novent_line: lily.NOventLine):
+        self._novent_line = comprovisation.process_comprovisation_attachments(
+            novent_line
+        )
+        self._server = pyo.Server(sr=96000, audio="offline", nchnls=3)
+
+    @property
+    def server(self) -> pyo.Server:
+        return self._server
+
+    @property
+    def duration(self) -> float:
+        return float(self._novent_line.duration)
+
+    @property
+    def CONCERT_PITCH(self) -> float:
+        return globals_.CONCERT_PITCH
+
+    @property
+    def instrument(self) -> pyo.EventInstrument:
+        tail = self._tail
+
+        class myinstr(pyo.EventInstrument):
+            def __init__(self, **args):
+                super().__init__(**args)
+                fadein, fadeout = 0.6, 0.6
+                self.env = pyo.Fader(
+                    fadein=fadein, fadeout=fadeout, dur=self.dur + tail,
+                )
+                self.generator = _right_hand_synth.SineGenerator(self.freq)
+                self.generator.generator.mul *= self.env
+                self.generator.out(self.chnl)
+                self.env.play()
+
+        return myinstr
+
+    def render(self, name: str) -> None:
+        self.server.boot()
+        self.server.recordOptions(
+            dur=self.duration + self._tail + 1,
+            filename="{}.wav".format(name),
+            sampletype=4,
+        )
+        events = pyo.Events(
+            instr=self.instrument,
+            freq=pyo.EventSeq(
+                [
+                    p[0].float * globals_.CONCERT_PITCH if p else 0
+                    for p in self._novent_line.pitch
+                ],
+                occurrences=1,
+            ),
+            dur=pyo.EventSeq([float(d) for d in self._novent_line.delay]),
+            chnl=pyo.EventSeq(
+                [
+                    _right_hand_synth.INSTRUMENT2CHANNEL_MAPPING[
+                        globals_.PITCH2INSTRUMENT[p[0].normalize()]
+                    ]
+                    if p
+                    else 0
+                    for p in self._novent_line.pitch
+                ],
+                occurrences=1,
+            ),
+            outs=3,
+        )
+        events.play()
+        events.stop(wait=self.duration)
+        self.server.start()
+
+
+class KeyboardSoundEngine(synthesis.SoundEngine):
+    def __init__(
+        self, right_hand_nline: lily.NOventLine, left_hand_nline: lily.NOventLine
+    ):
+        self.right_hand_engine = RightHandKeyboardEngine(right_hand_nline)
+        self.left_hand_engine = LeftHandKeyboardEngine(left_hand_nline)
+
+    def render(self, name: str) -> None:
+        rhn = "{}_right".format(name)
+        lhn = "{}_left".format(name)
+        self.right_hand_engine.render(rhn)
+        self.left_hand_engine.render(lhn)
 
 
 class SilentKeyboardMaker(mus.TrackMaker):
@@ -294,25 +389,53 @@ class SilentKeyboardMaker(mus.TrackMaker):
 
 
 class KeyboardMaker(SilentKeyboardMaker):
-    def __init__(
-        self,
-        n_beats_per_bar: infit.InfIt = infit.Cycle((4, 3, 5, 4)),
-        grid_size: fractions.Fraction = fractions.Fraction(1, 8),
-    ):
-        self.n_beats_per_bar = n_beats_per_bar
-        self.grid_size = grid_size
+    _normalized_unusual_first_pitch = globals_.INTONATIONS_PER_SCALE_DEGREE[0][
+        0
+    ].normalize()
 
-    @classmethod
-    def _convert_mu_pitch2named_pitch(
-        cls, pitch: ji.JIPitch, ratio2pitch_class_dict: dict
-    ) -> abjad.NamedPitch:
-        """somewhat complicated because the same ratio could appear in the left hand and
-        also in the right hand"""
-        pass
+    def __call__(self) -> Keyboard:
+        # overwriting default call method to resolve complex problem of having the same
+        # ratio mapped to different midi keys depending on the particular staff.
+
+        # 1. make abjad data
+        staves = []
+
+        # depending on the particular sub-staff the ratio2pitch_class_dict and the
+        # respective method how to detect abjad pitches does get adapted
+        for line, used_ratio2pitch_class_dict, convertion_method in zip(
+            self.musdat,
+            (
+                self.ratio2pitchclass_dict,
+                KEYBOARD_RATIO2ABJAD_PITCH_PER_ZONE["sine"],
+                KEYBOARD_RATIO2ABJAD_PITCH_PER_ZONE["pianoteq"],
+            ),
+            (
+                None,
+                lambda pitch, mapping: mapping[pitch],
+                lambda pitch, mapping: mapping[pitch],
+            ),
+        ):
+            staves.append(
+                self._convert_novent_line2abjad_staff(
+                    line, self.bars, used_ratio2pitch_class_dict, convertion_method
+                )
+            )
+
+        abjad_data = abjad.Container(staves)
+        abjad_data.simultaneous = True
+
+        # 2. generate sound engine
+        sound_engine = self.make_sound_engine()
+
+        return self._track_class(abjad_data, sound_engine)
+
+    ###################################################################################
+    #           functions to generate the musical data for the left hand              #
+    ###################################################################################
 
     @staticmethod
-    def _sort_orientation_note_pitches(
-        previous_pitches: tuple, harmonic_field: dict, available_instruments: tuple
+    def _mlh_sort_orientation_note_pitches(
+        harmonic_field: dict, available_instruments: tuple
     ) -> tuple:
         available_pitches = functools.reduce(
             operator.add,
@@ -340,26 +463,622 @@ class KeyboardMaker(SilentKeyboardMaker):
             for p in pitches_sorted_by_harmonicity
             if globals_.PITCH2SCALE_DEGREE[p] in (3, 6)
         )
-        if previous_pitches:
-            pitches_appearing_in_previous_pitches = tuple(
-                p for p in pitches_sorted_by_harmonicity if p in previous_pitches
-            )
-        else:
-            pitches_appearing_in_previous_pitches = tuple([])
 
         pitches = tuple(
-            p
-            for p in pitches_sorted_by_harmonicity
-            if p not in pitches_in_sd_3_and_6 + pitches_appearing_in_previous_pitches
+            p for p in pitches_sorted_by_harmonicity if p not in pitches_in_sd_3_and_6
         )
         pitches += pitches_in_sd_3_and_6
-        pitches += pitches_appearing_in_previous_pitches
         return pitches
 
-    def _attach_left_hand_orientation_notes(
-        self, nset: lily.NOventSet, segment_maker: mus.SegmentMaker
-    ) -> None:
-        # add mandatory rhythmical / metrical orientation notes
+    @staticmethod
+    def _mlh_detect_available_pitch_classes_per_beat(
+        segment_maker: mus.SegmentMaker,
+        spread_metrical_loop: complex_meters.SpreadMetricalLoop,
+        orientation_rhythm_metricity_pairs: tuple,
+    ):
+        available_pitches_per_mandatory_beat = []
+        for data in orientation_rhythm_metricity_pairs:
+            absolute_position, metricity = data
+            primes = spread_metrical_loop.get_primes_of_absolute_rhythm(
+                absolute_position
+            )
+            slice_idx = segment_maker.bread.find_indices_of_responsible_slices(
+                absolute_position, absolute_position + 1
+            )[0]
+            slice_ = segment_maker.bread[slice_idx]
+
+            available_instruments = tuple(
+                spread_metrical_loop.prime_instrument_mapping[prime] for prime in primes
+            )
+            available_pitches = KeyboardMaker._mlh_sort_orientation_note_pitches(
+                slice_.harmonic_field, available_instruments
+            )
+            available_pitches_per_mandatory_beat.append(available_pitches)
+
+        return tuple(available_pitches_per_mandatory_beat)
+
+    @classmethod
+    def _mlh_detect_absolute_scale_degree(
+        cls, pitch: ji.JIPitch, relative_ground_octave: int
+    ) -> int:
+        normalized_pitch = pitch.normalize()
+        relative_scale_degree = globals_.PITCH2SCALE_DEGREE[normalized_pitch]
+        pitch_octave = pitch.octave
+
+        # remove error occuring from weird intonation for first scale degree where
+        # octave is returning a false value
+        if normalized_pitch == cls._normalized_unusual_first_pitch:
+            pitch_octave += 1
+
+        absolute_scale_degree = relative_scale_degree + (
+            (pitch.octave - relative_ground_octave) * 7
+        )
+        return int(absolute_scale_degree)
+
+    @classmethod
+    def _mlh_detect_absolute_scale_degrees(
+        cls, pitch0: ji.JIPitch, pitch1: ji.JIPitch
+    ) -> tuple:
+
+        p0_normalized, p1_normalized = pitch0.normalize(), pitch1.normalize()
+
+        scale_degrees = tuple(
+            globals_.PITCH2SCALE_DEGREE[p] for p in (p0_normalized, p1_normalized)
+        )
+
+        octaves = [p.octave for p in (pitch0, pitch1)]
+
+        # remove error occuring from weird intonation for first scale degree where
+        # octave is returning a false value
+        for idx, p in enumerate((p0_normalized, p1_normalized)):
+            if p == cls._normalized_unusual_first_pitch:
+                octaves[idx] += 1
+
+        min_oct = min(octaves)
+        octaves = [oc - min_oct for oc in octaves]
+        absolute_scale_degrees = tuple(
+            sd + (oc * 7) for sd, oc in zip(scale_degrees, octaves)
+        )
+
+        return absolute_scale_degrees, min_oct
+
+    def _mlh_make_melodic_core(
+        self,
+        start_pitch: ji.JIPitch,
+        segment_maker: mus.SegmentMaker,
+        orientation_rhythm_metricity_pairs: tuple,
+        available_pitches_per_mandatory_beat: tuple,
+    ) -> tuple:
+        """Return musical_data: tuple, scale_degrees_distances: tuple, fitness_value: int
+
+        musical_data is composed of subtuples where each subtuple contains:
+            (absolute_position: float, pitch: ji.JIPitch, relative_metricity: float)
+        """
+
+        musical_data = [
+            (
+                orientation_rhythm_metricity_pairs[0][0],
+                start_pitch,
+                orientation_rhythm_metricity_pairs[0][1],
+            )
+        ]
+        scale_degrees_distances = []
+
+        fitness = 0
+        for available_pitches, rhythmical_data in zip(
+            available_pitches_per_mandatory_beat[1:],
+            orientation_rhythm_metricity_pairs[1:],
+        ):
+            last_pitch = musical_data[-1][1]
+            octave_ignoring_last_pitch = last_pitch.set_val_border(2)
+            absolute_position, metricity = rhythmical_data
+            filtered_available_pitches = tuple(
+                pitch
+                for pitch in available_pitches
+                if pitch.set_val_border(2) != octave_ignoring_last_pitch
+            )
+            if not filtered_available_pitches:
+                filtered_available_pitches = tuple(available_pitches)
+
+            filtered_available_pitches = sorted(filtered_available_pitches)
+            closest_pitch = tools.find_closest_item(
+                last_pitch, filtered_available_pitches
+            )
+
+            musical_data.append((absolute_position, closest_pitch, metricity))
+
+            # detect distance in scale degrees
+            scale_degrees, _ = type(self)._mlh_detect_absolute_scale_degrees(
+                last_pitch, closest_pitch
+            )
+
+            scale_degrees_distance = scale_degrees[1] - scale_degrees[0]
+
+            # melodic jumps within the same octave that omit auxiliary pitches 3 or 6 are
+            # read as having only one scale degree difference. therefore melodic phrases
+            # that stay within the global pentatonic are accepted.
+            if set(scale_degrees) in (set([7, 5]), set([2, 4])):
+                if scale_degrees_distance > 0:
+                    scale_degrees_distance -= 1
+                else:
+                    scale_degrees_distance += 1
+
+            fitness += abs(scale_degrees_distance)
+            scale_degrees_distances.append(scale_degrees_distance)
+
+        return tuple(musical_data), tuple(scale_degrees_distances), fitness
+
+    def _mlh_detect_melodic_core(
+        self,
+        segment_maker: mus.SegmentMaker,
+        orientation_rhythm_metricity_pairs: tuple,
+        available_pitches_per_mandatory_beat: tuple,
+    ) -> tuple:
+        """Return (musical_data: tuple, scale_degrees_distances: tuple)
+
+        musical_data is composed of subtuples where each subtuple contains:
+            (absolute_position: float, pitch: ji.JIPitch, relative_metricity: float)
+        """
+
+        # loop through all different first - pitch options, generate a melodic core and
+        # save its fitness value
+        hof = crosstrainer.Stack(size=1)
+        for potential_first_pitch in available_pitches_per_mandatory_beat[0]:
+            (
+                melodic_core,
+                scale_degrees_distances,
+                fitness,
+            ) = self._mlh_make_melodic_core(
+                potential_first_pitch,
+                segment_maker,
+                orientation_rhythm_metricity_pairs,
+                available_pitches_per_mandatory_beat,
+            )
+            hof.append((melodic_core, scale_degrees_distances), fitness)
+
+        return hof.best[0]
+
+    def _mlh_adapt_melodic_core(
+        self, melodic_core: tuple, available_pitches_per_mandatory_beat: tuple
+    ) -> tuple:
+        """Return tuple that contain subtuples.
+
+        Each subtuple contains:
+            (absolute_position: float, pitch: list, volume: float, attachments: dict)
+        """
+        adapted_melodic_core = []
+        for idx, event, available_pitches in zip(
+            range(len(melodic_core)), melodic_core, available_pitches_per_mandatory_beat
+        ):
+            start, melodic_pitch, metricity = event
+            pitches = [melodic_pitch]
+            attachments_ = dict([])
+
+            normalized_melodic_pitch = melodic_pitch.normalize()
+
+            if idx > 0:
+                previous_event = adapted_melodic_core[idx - 1]
+                prohibited_pitches = list(previous_event[1])
+            else:
+                prohibited_pitches = []
+
+            try:
+                prohibited_pitches.append(melodic_core[idx + 1][1])
+            except IndexError:
+                # if the current event is the last event no next event exists. this can be
+                # ignored.
+                pass
+
+            available_pitches = tuple(
+                p
+                for p in available_pitches
+                if p.normalize() != normalized_melodic_pitch
+                and p not in prohibited_pitches
+            )
+            available_pitches_within_one_octave = tuple(
+                p
+                for p in available_pitches
+                if abs(p - normalized_melodic_pitch) < ji.r(2, 1)
+            )
+
+            if available_pitches_within_one_octave:
+                potential_harmonies = []
+
+                for n_pitches in range(
+                    1, min((5, len(available_pitches_within_one_octave) + 1))
+                ):
+                    for potential_harmony in itertools.combinations(
+                        available_pitches_within_one_octave, n_pitches
+                    ):
+                        potential_harmony += (melodic_pitch,)
+                        is_valid = True
+                        for p0, p1 in itertools.combinations(potential_harmony, 2):
+                            diff = abs((p1 - p0).cents)
+                            if diff <= 250 or diff >= 1200:
+                                is_valid = False
+                                break
+
+                        if is_valid:
+                            potential_harmonies.append(potential_harmony)
+
+                if potential_harmonies:
+                    size_per_harmony = tuple(len(h) for h in potential_harmonies)
+                    max_harmony_size = max(size_per_harmony)
+                    potential_harmonies = tuple(
+                        h
+                        for s, h in zip(size_per_harmony, potential_harmonies)
+                        if s == max_harmony_size
+                    )
+                    # just take the first one / don't set any particular preference
+                    harmony = potential_harmonies[0]
+
+                else:
+                    harmony = None
+
+            else:
+                harmony = None
+
+            volume = 0.34
+
+            if metricity > 0.94:
+                volume = 0.7
+                attachments_.update(
+                    {"articulation": attachments.ArticulationOnce("accent")}
+                )
+
+            if metricity > 0.75:
+                volume = 0.645
+
+                if harmony:
+                    pitches = list(harmony)
+
+                    if metricity < 0.94:
+                        attachments_.update({"arpeggio": attachments.Arpeggio()})
+
+            elif metricity > 0.52:
+                volume = 0.585
+
+                if harmony:
+                    pitches = list(harmony)
+                    attachments_.update({"choose": attachments.Choose()})
+
+            elif metricity > 0.38:
+                volume = 0.495
+
+                if harmony:
+                    pitches = list(harmony)
+                    attachments_.update({"choose": attachments.ChooseOne()})
+
+            elif metricity > 0.3:
+                volume = 0.39
+
+            adapted_melodic_core.append((start, pitches, volume, attachments_))
+
+        return tuple(adapted_melodic_core)
+
+    @staticmethod
+    def _mlh_find_available_positions_and_pitches_in_between(
+        range_: tuple,
+        segment_maker: mus.SegmentMaker,
+        spread_metrical_loop: complex_meters.SpreadMetricalLoop,
+        available_pitches_for_left_hand: tuple,
+    ) -> tuple:
+        """Return tuple filled with subtuples of the form (position, metricity, pitches)
+        """
+        rm_pairs = spread_metrical_loop.get_all_rhythm_metricitiy_pairs(*range_)[1:]
+        apc_per_beat = KeyboardMaker._mlh_detect_available_pitch_classes_per_beat(
+            segment_maker, spread_metrical_loop, rm_pairs
+        )
+        ap_per_beat = tuple(
+            tuple(
+                pitch
+                for pitch in available_pitches_for_left_hand
+                if pitch.normalize() in available_pitch_classes
+            )
+            for available_pitch_classes in apc_per_beat
+        )
+        return tuple(
+            rmp + (pitches,) for rmp, pitches in zip(rm_pairs, ap_per_beat) if pitches
+        )
+
+    def _mlh_smooth_melody(
+        self,
+        event0: tuple,
+        event1: tuple,
+        data_per_available_beat: tuple,
+        n_scale_degrees_distance: int,
+        melodic_pitches_scale_degrees: tuple,
+        relative_ground_octave: int,
+    ) -> tuple:
+        additional_events = []
+
+        # add absolute scale degrees to the pitch information in each beat.
+        # And filter only those beats that contain pitches whose absolute scale
+        # degrees are in between the scale degrees of the framing melodic pitches.
+        filtered_data_per_available_beat = []
+        for data in data_per_available_beat:
+            rhythmical_data = data[:2]
+            pitches = data[-1]
+            new_pitches = []
+            for pitch in pitches:
+                absolute_scale_degree = type(self)._mlh_detect_absolute_scale_degree(
+                    pitch, relative_ground_octave
+                )
+                is_valid = (
+                    absolute_scale_degree > melodic_pitches_scale_degrees[0],
+                    absolute_scale_degree < melodic_pitches_scale_degrees[1],
+                )
+                if all(is_valid):
+                    new_pitches.append((pitch, absolute_scale_degree))
+
+            if new_pitches:
+                filtered_data_per_available_beat.append(
+                    rhythmical_data + (tuple(new_pitches),)
+                )
+
+        # only continue if there are any chances to make melodic interpolations
+        if filtered_data_per_available_beat:
+
+            direction_of_melodic_movement = n_scale_degrees_distance > 0
+
+            # try to find the best solution now where "best" is defined as the
+            # solution that results in the averagely smallest melodic steps. if
+            # two solutions may have equally small steps, the solution that
+            # results in higher metricity is prefered.
+            solutions = []
+            for n_added_optional_interpolation_events in range(
+                1, len(filtered_data_per_available_beat) + 1
+            ):
+                for choosen_interpolation_events in itertools.combinations(
+                    filtered_data_per_available_beat,
+                    n_added_optional_interpolation_events,
+                ):
+                    # making sure the events are sorted in correct time order
+                    choosen_interpolation_events = sorted(
+                        choosen_interpolation_events, key=operator.itemgetter(0)
+                    )
+                    available_pitches_per_choosen_interpolation_event = tuple(
+                        map(operator.itemgetter(2), choosen_interpolation_events)
+                    )
+
+                    for pitches_per_choosen_interpolation_event in itertools.product(
+                        *available_pitches_per_choosen_interpolation_event
+                    ):
+                        absolute_scale_degrees_per_pitch = tuple(
+                            map(
+                                operator.itemgetter(1),
+                                pitches_per_choosen_interpolation_event,
+                            )
+                        )
+                        n_scale_degrees_difference_between_pitches = tuple(
+                            b - a
+                            for a, b in zip(
+                                (melodic_pitches_scale_degrees[0],)
+                                + absolute_scale_degrees_per_pitch,
+                                absolute_scale_degrees_per_pitch
+                                + (melodic_pitches_scale_degrees[1],),
+                            )
+                        )
+
+                        is_addable = (
+                            0 not in n_scale_degrees_difference_between_pitches,
+                            all(
+                                tuple(
+                                    (n_scale_degrees_distance > 0)
+                                    == direction_of_melodic_movement
+                                    for n_scale_degrees_distance in n_scale_degrees_difference_between_pitches
+                                )
+                            ),
+                        )
+
+                        if all(is_addable):
+                            fitness = sum(
+                                n_scale_degrees_difference_between_pitches
+                            ) / len(n_scale_degrees_difference_between_pitches)
+                            actual_pitches_per_interpolation_event = tuple(
+                                map(
+                                    operator.itemgetter(0),
+                                    pitches_per_choosen_interpolation_event,
+                                )
+                            )
+
+                            solution = tuple(
+                                interpolation_event[:2] + (interpolation_pitch,)
+                                for interpolation_event, interpolation_pitch in zip(
+                                    choosen_interpolation_events,
+                                    actual_pitches_per_interpolation_event,
+                                )
+                            )
+                            solutions.append((solution, fitness))
+
+            if solutions:
+                min_fitness = min(solutions, key=operator.itemgetter(1))[1]
+                solutions = tuple(
+                    solution[0] for solution in solutions if solution[1] == min_fitness
+                )
+                best_solution = max(
+                    solutions, key=lambda solution: sum(event[1] for event in solution),
+                )
+
+                for event in best_solution:
+                    start_position, _, pitch = event
+                    pitches = [pitch]
+                    volume = 0.25
+                    attachments_ = {"optional": attachments.Optional()}
+                    additional_events.append(
+                        (start_position, pitches, volume, attachments_)
+                    )
+
+        return tuple(additional_events)
+
+    def _mlh_extend_melodic_core(
+        self,
+        melodic_core: tuple,
+        adapted_melodic_core: tuple,
+        scale_degrees_distances: tuple,
+        segment_maker: mus.SegmentMaker,
+        spread_metrical_loop: complex_meters.SpreadMetricalLoop,
+        available_pitches_for_left_hand: tuple,
+    ) -> tuple:
+        """Return tuple that contain subtuples.
+
+        Each subtuple contains:
+            (absolute_position: float, pitch: list, volume: float, attachments: dict)
+        """
+
+        further_adapted_melodic_core = []
+        for (
+            adapted_event0,
+            adapted_event1,
+            event0,
+            event1,
+            n_scale_degrees_distance,
+        ) in zip(
+            adapted_melodic_core,
+            adapted_melodic_core[1:],
+            melodic_core,
+            melodic_core[1:],
+            scale_degrees_distances,
+        ):
+            further_adapted_melodic_core.append(adapted_event0)
+
+            tests_if_optional_interpolation_pitches_shall_be_added = (
+                n_scale_degrees_distance > 1,
+                event0[1] == event1[1],
+            )
+
+            if any(tests_if_optional_interpolation_pitches_shall_be_added):
+                dpab = KeyboardMaker._mlh_find_available_positions_and_pitches_in_between(
+                    (event0[0], event1[0]),
+                    segment_maker,
+                    spread_metrical_loop,
+                    available_pitches_for_left_hand,
+                )
+                data_per_available_beat = dpab
+
+                pitch0, pitch1 = event0[1], event1[1]
+                melodic_pitches_scale_degrees, relative_ground_octave = type(
+                    self
+                )._mlh_detect_absolute_scale_degrees(pitch0, pitch1)
+
+            # try to add more optional interpolation pitches to potentially smooth the
+            # resulting melodic line.
+            if tests_if_optional_interpolation_pitches_shall_be_added[0]:
+                further_adapted_melodic_core.extend(
+                    self._mlh_smooth_melody(
+                        event0,
+                        event1,
+                        data_per_available_beat,
+                        n_scale_degrees_distance,
+                        melodic_pitches_scale_degrees,
+                        relative_ground_octave,
+                    )
+                )
+
+            # try to add one interpolation pitch to potentially avoid melodic pitch
+            # repetition
+            elif tests_if_optional_interpolation_pitches_shall_be_added[1]:
+                adapted_data_per_available_beat = []
+                for data in data_per_available_beat:
+                    rhythmical_data = data[:2]
+                    pitches = data[-1]
+
+                    new_pitches = []
+                    for pitch in pitches:
+                        absolute_scale_degree = type(
+                            self
+                        )._mlh_detect_absolute_scale_degree(
+                            pitch, relative_ground_octave
+                        )
+                        if absolute_scale_degree not in melodic_pitches_scale_degrees:
+                            new_pitches.append((pitch, absolute_scale_degree))
+
+                    adapted_data_per_available_beat.append(
+                        rhythmical_data + (tuple(new_pitches),)
+                    )
+
+                scale_degrees_distance_per_pitch_per_event = tuple(
+                    tuple(
+                        abs(
+                            pitch_and_abs_scale_degree[1]
+                            - melodic_pitches_scale_degrees[0]
+                        )
+                        for pitch_and_abs_scale_degree in event[2]
+                    )
+                    for event in adapted_data_per_available_beat
+                )
+                closest_scale_degree_distance = min(
+                    min(
+                        scale_degrees_distance_per_pitch_per_event,
+                        key=lambda scale_degrees_distance_per_pitch: min(
+                            scale_degrees_distance_per_pitch
+                        ),
+                    )
+                )
+
+                filtered_data_per_available_beat = []
+                for data, scale_degrees_distance_per_pitch in zip(
+                    adapted_data_per_available_beat,
+                    scale_degrees_distance_per_pitch_per_event,
+                ):
+                    rhythmical_data = data[:2]
+                    pitches = data[-1]
+                    pitches = tuple(
+                        p[0]
+                        for p, sdd in zip(pitches, scale_degrees_distance_per_pitch)
+                        if sdd == closest_scale_degree_distance
+                    )
+                    if pitches:
+                        # arbitrary decision which pitch to choose since those that are
+                        # remaining now are all close enough to the repating pitch.
+                        choosen_pitch = pitches[0]
+                        filtered_data_per_available_beat.append(
+                            rhythmical_data + (choosen_pitch,)
+                        )
+
+                event = max(
+                    filtered_data_per_available_beat, key=operator.itemgetter(1)
+                )
+                start_position, _, pitch = event
+                pitches = [pitch]
+                volume = 0.25
+                attachments_ = {"optional": attachments.Optional()}
+                further_adapted_melodic_core.append(
+                    (start_position, pitches, volume, attachments_)
+                )
+
+        further_adapted_melodic_core.append(adapted_melodic_core[-1])
+
+        return tuple(further_adapted_melodic_core)
+
+    def _mlh_make_nline(self, left_hand_melodic_data: tuple, segment_maker) -> tuple:
+        max_duration = 1
+
+        nset = lily.NOventSet(size=segment_maker.duration)
+        for current_event, next_event in zip(
+            left_hand_melodic_data,
+            left_hand_melodic_data[1:] + ((segment_maker.duration, None, None, None),),
+        ):
+            stop = next_event[0]
+            delay = next_event[0] - current_event[0]
+            if delay > max_duration:
+                stop = current_event[0] + max_duration
+
+            novent = lily.NOvent(
+                pitch=current_event[1],
+                volume=current_event[2],
+                delay=current_event[0],
+                duration=stop,
+            )
+            for key, value in current_event[3].items():
+                setattr(novent, key, value)
+
+            nset.append(novent)
+
+        return nset.novent_line
+
+    def _make_left_hand(self, segment_maker: mus.SegmentMaker) -> lily.NOventLine:
+        # (0) find positions where notes shall be added & detect their metrical potential.
         spread_metrical_loop = segment_maker.transcription.spread_metrical_loop
         rhythm_metricity_pairs = spread_metrical_loop.get_all_rhythm_metricitiy_pairs()
         orientation_rhythm_metricity_pairs = tuple(
@@ -377,70 +1096,96 @@ class KeyboardMaker(SilentKeyboardMaker):
             for metricity in orientation_metricities
         )
 
-        previous_pitches = None
-
-        for data, next_start in zip(
-            orientation_rhythm_metricity_pairs,
-            tuple(map(operator.itemgetter(0), orientation_rhythm_metricity_pairs))[1:]
-            + (segment_maker.duration,),
-        ):
-            absolute_position, metricity = data
-            primes = spread_metrical_loop.get_primes_of_absolute_rhythm(
-                absolute_position
+        orientation_rhythm_metricity_pairs = tuple(
+            (rm_pair[0], scaled_metricity)
+            for rm_pair, scaled_metricity in zip(
+                orientation_rhythm_metricity_pairs, scaled_orientation_metricities
             )
-            slice_idx = segment_maker.bread.find_indices_of_responsible_slices(
-                absolute_position, absolute_position + 1
-            )[0]
-            slice_ = segment_maker.bread[slice_idx]
+        )
 
-            available_instruments = tuple(
-                spread_metrical_loop.prime_instrument_mapping[prime] for prime in primes
+        available_pitches_for_left_hand = tuple(
+            KEYBOARD_RATIO2ABJAD_PITCH_PER_ZONE["pianoteq"].keys()
+        )
+
+        # available pitch classes per mandatory beat
+        apc_per_mandatory_beat = self._mlh_detect_available_pitch_classes_per_beat(
+            segment_maker, spread_metrical_loop, orientation_rhythm_metricity_pairs
+        )
+
+        ap_per_mandatory_beat = tuple(
+            tuple(
+                pitch
+                for pitch in available_pitches_for_left_hand
+                if pitch.normalize() in available_pitch_classes
             )
-            pitches = self._sort_orientation_note_pitches(
-                previous_pitches, slice_.harmonic_field, available_instruments
-            )
-            pitches = pitches[:2]
+            for available_pitch_classes in apc_per_mandatory_beat
+        )
 
-            previous_pitches = pitches
+        # (1) find melodic core where each mandatory beat is connected with a particular
+        # pitch
+        melodic_core, scale_degrees_distances = self._mlh_detect_melodic_core(
+            segment_maker, orientation_rhythm_metricity_pairs, ap_per_mandatory_beat,
+        )
 
-            for loc_slice_ in segment_maker.bread[slice_idx:]:
-                slice_pitches = slice_.harmonic_field.keys()
-                if all(tuple(p in slice_pitches for p in pitches)):
-                    stop = loc_slice_.stop
-                else:
-                    break
+        # (2) adapt single events of melodic core through adding pitches or playing
+        # techniques to events regarding their metricity
+        adapted_melodic_core = self._mlh_adapt_melodic_core(
+            melodic_core, ap_per_mandatory_beat
+        )
 
-            stop = min((stop, next_start))
-            pitches = tuple(p.register(-1) for p in pitches)
-            nevent = lily.NOvent(pitch=pitches, delay=absolute_position, duration=stop)
+        # (3) find optional interpolation tones between mandatory melodic events
+        left_hand_melodic_data = self._mlh_extend_melodic_core(
+            melodic_core,
+            adapted_melodic_core,
+            scale_degrees_distances,
+            segment_maker,
+            spread_metrical_loop,
+            available_pitches_for_left_hand,
+        )
 
-            scaled_metricity = scaled_orientation_metricities[
-                orientation_metricities.index(metricity)
-            ]
+        # (4) combine data to final result: NOventLine
+        nline = self._mlh_make_nline(left_hand_melodic_data, segment_maker)
+        return nline
 
-            if scaled_metricity > 0.66:
-                if scaled_metricity > 0.8:
-                    nevent.articulation_once = attachments.ArticulationOnce("accent")
-                    nevent.volume = 0.8
+    ###################################################################################
+    #           functions to generate the musical data for the right hand             #
+    ###################################################################################
 
-                nevent.volume = 0.7
+    def _make_right_hand(self, segment_maker: mus.SegmentMaker) -> lily.NOventLine:
+        nline = lily.NOventLine([])
 
-            elif scaled_metricity > 0.33:
-                if len(pitches) > 1:
-                    nevent.choose = attachments.Choose()
-                nevent.volume = 0.6
+        available_pitches_for_right_hand = tuple(
+            KEYBOARD_RATIO2ABJAD_PITCH_PER_ZONE["sine"].keys()
+        )
+        for orientation_novent in segment_maker.melodic_orientation:
+            if orientation_novent.pitch:
+                current_pitch = orientation_novent.pitch[0]
+                octave_ignoring_current_pitch = current_pitch.set_val_border(2)
+                pitches_to_choose_from = sorted(
+                    p
+                    for p in available_pitches_for_right_hand
+                    if p.set_val_border(2) == octave_ignoring_current_pitch
+                )
+                closest_pitch = tools.find_closest_item(
+                    current_pitch, pitches_to_choose_from
+                )
+
+                if current_pitch.octave == 0 and closest_pitch != current_pitch:
+                    closest_pitch = pitches_to_choose_from[-1]
+
+                pitch = [closest_pitch]
 
             else:
-                if len(pitches) > 1:
-                    nevent.choose = attachments.ChooseOne()
-                nevent.volume = 0.5
+                pitch = []
 
-            nset.append(nevent)
+            novent = lily.NOvent(
+                pitch=pitch,
+                delay=orientation_novent.delay,
+                duration=orientation_novent.duration,
+            )
+            nline.append(novent)
 
-    def _make_left_hand(self, segment_maker: mus.SegmentMaker) -> lily.NOventLine:
-        nset = lily.NOventSet(size=segment_maker.duration)
-        self._attach_left_hand_orientation_notes(nset, segment_maker)
-        return nset.novent_line
+        return nline
 
     def make_musdat(
         self, segment_maker: mus.SegmentMaker, meta_track: mus.MetaTrack
@@ -451,11 +1196,13 @@ class KeyboardMaker(SilentKeyboardMaker):
         for staff in range(meta_track.n_staves - 1):
             pl.append(lily.NOventLine([lily.NOvent(duration=dur, delay=dur)]))
 
-        pl[-1] = self._make_left_hand(segment_maker)
+        pl[1] = self._make_right_hand(segment_maker)
+        pl[2] = self._make_left_hand(segment_maker)
 
         return self._prepare_staves(pl, segment_maker)
 
     def make_sound_engine(self) -> synthesis.SoundEngine:
-        return LeftHandKeyboardEngine(
-            self._convert_symbolic_novent_line2asterisked_novent_line(self.musdat[2])
+        return KeyboardSoundEngine(
+            self._convert_symbolic_novent_line2asterisked_novent_line(self.musdat[1]),
+            self._convert_symbolic_novent_line2asterisked_novent_line(self.musdat[2]),
         )

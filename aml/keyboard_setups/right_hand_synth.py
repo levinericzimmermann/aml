@@ -11,10 +11,18 @@ import pyo
 # can be changed dynamically before program start if new setup requires different mapping.
 INSTRUMENT2CHANNEL_MAPPING = {"violin": 0, "viola": 1, "cello": 2}
 
-with open("midi_note2freq_and_instrument_mapping.json", "r") as f:
-    MIDI_NOTE2FREQ_AND_INSTRUMENT_MAPPING = {
-        int(key): (float(item[0]), item[1]) for key, item in json.load(f).items()
-    }
+try:
+    with open("midi_note2freq_and_instrument_mapping.json", "r") as f:
+        MIDI_NOTE2FREQ_AND_INSTRUMENT_MAPPING = {
+            int(key): (float(item[0]), item[1]) for key, item in json.load(f).items()
+        }
+except FileNotFoundError:
+    with open(
+        "aml/keyboard_setups/midi_note2freq_and_instrument_mapping.json", "r"
+    ) as f:
+        MIDI_NOTE2FREQ_AND_INSTRUMENT_MAPPING = {
+            int(key): (float(item[0]), item[1]) for key, item in json.load(f).items()
+        }
 
 
 class Generator(abc.ABC):
@@ -49,7 +57,7 @@ class SineGenerator(Generator):
     def mul(self, value: float):
         self.fader.mul = value
 
-    def out(self, chnl: int):
+    def out(self, chnl: int = 0, dur: float = 0, delay: float = 0):
         # randomize parameters for a more lively sound
         fadein_time = random.uniform(0.35, 1.5)
         self.lfoo0.freq = random.uniform(0.01, 0.6)
@@ -61,23 +69,24 @@ class SineGenerator(Generator):
         self.fader.setFadein(fadein_time)
 
         # start all lfo and fader
-        self.fader.play()
-        self.lfoo0.play()
-        self.lfoo1.play()
-        self.lfo.play()
+        self.fader.play(dur=dur, delay=delay)
+        self.lfoo0.play(dur=dur, delay=delay)
+        self.lfoo1.play(dur=dur, delay=delay)
+        self.lfo.play(dur=dur, delay=delay)
 
         # return & start actual generator
-        return self.generator.out(chnl=chnl)
+        return self.generator.out(chnl=chnl, dur=dur, delay=delay)
 
-    def stop(self):
+    def stop(self, wait: float = None):
         fadeout_time = random.uniform(0.5, 1.2)
         self.fader.setFadeout(fadeout_time)
-        self.fader.stop()
+        self.fader.stop(wait=wait)
 
-        self.lfoo0.stop(wait=fadeout_time)
-        self.lfoo1.stop(wait=fadeout_time)
-        self.lfo.stop(wait=fadeout_time)
-        return self.generator.stop(wait=fadeout_time)
+        waiting_time = fadeout_time + wait
+        self.lfoo0.stop(wait=waiting_time)
+        self.lfoo1.stop(wait=waiting_time)
+        self.lfo.stop(wait=waiting_time)
+        return self.generator.stop(wait=waiting_time)
 
 
 class RightHandSynth(object):
@@ -96,7 +105,7 @@ class RightHandSynth(object):
     def __init__(self):
         def trigger_on_function(voice: int) -> None:
             midi_note = int(self.notes["pitch"].get(all=True)[voice])
-            velocity = int(self.notes["velocity"].get(all=True)[voice])
+            velocity = self.notes["velocity"].get(all=True)[voice] * 0.35
             info = "receive note on msg with voice: "
             info += "'{}', midi-pitch'{}' and velocity: '{}'".format(
                 voice, midi_note, velocity

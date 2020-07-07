@@ -2,7 +2,7 @@ import pyo
 import right_hand_synth
 
 if __name__ == "__main__":
-    s = pyo.Server(audio="jack", midi="jack")
+    s = pyo.Server(audio="jack", midi="jack", nchnls=4, buffersize=512)
 
     # listening / sending to all midi output devices
     s.setMidiInputDevice(99)

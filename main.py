@@ -9,7 +9,7 @@ if __name__ == "__main__":
         59,
         "opening",
         # 5,
-        tempo_factor=0.35,
+        tempo_factor=0.3,
         octave_of_first_pitch=0,
         harmonic_tolerance=0.385,
         ro_temperature=0.7,

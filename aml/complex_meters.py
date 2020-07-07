@@ -299,8 +299,28 @@ class SpreadMetricalLoop(object):
     def get_all_metricities(self) -> tuple:
         return self._metricities
 
-    def get_all_rhythm_metricitiy_pairs(self) -> tuple:
-        return self._absolute_rhythm_and_metricities
+    def get_all_rhythm_metricitiy_pairs(self, start=None, stop=None) -> tuple:
+        absolute_rhythm_and_metricities = self._absolute_rhythm_and_metricities
+        start_idx = 0
+
+        if start:
+            start_idx = tools.find_closest_index(
+                start, absolute_rhythm_and_metricities, key=operator.itemgetter(0)
+            )
+            if absolute_rhythm_and_metricities[start_idx][0] < start:
+                start_idx += 1
+
+        if stop:
+            stop_idx = tools.find_closest_index(
+                stop, absolute_rhythm_and_metricities, key=operator.itemgetter(0)
+            )
+            if absolute_rhythm_and_metricities[stop_idx][0] < stop:
+                stop_idx += 1
+
+        else:
+            stop_idx = len(absolute_rhythm_and_metricities)
+
+        return self._absolute_rhythm_and_metricities[start_idx:stop_idx]
 
     def get_rhythms_for_instrument(self, instrument: str) -> tuple:
         return self.get_rhythms_for_prime(self.instrument_prime_mapping[instrument])

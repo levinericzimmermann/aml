@@ -95,7 +95,21 @@ RATIO2PITCHCLASS = {
 }
 
 
-MIDI_PITCH2ABJAD_PITCH = tuple(abjad.NamedPitch(n - 60) for n in range(127))
+def _mk_midi_pitch2abjad_pitch_tuple() -> tuple:
+    pitch_number2pitch_class = tuple(
+        abjad.NamedPitchClass(name)
+        for name in "c df d ef e f gf g af a bf b".split(" ")
+    )
+    midi_pitch2abjad_pitch = tuple(abjad.NamedPitch(n - 60) for n in range(127))
+    return tuple(
+        abjad.NamedPitch(
+            name=pitch_number2pitch_class[p.pitch_class.number], octave=p.octave
+        )
+        for p in midi_pitch2abjad_pitch
+    )
+
+
+MIDI_PITCH2ABJAD_PITCH = _mk_midi_pitch2abjad_pitch_tuple()
 
 
 RATIO2ARTIFICAL_HARMONIC_PITCHCLASS_AND_ARTIFICIAL_HARMONIC_OCTAVE = {

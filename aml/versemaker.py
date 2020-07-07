@@ -586,12 +586,15 @@ class VerseMaker(mus.SegmentMaker):
                     globals_.PITCH2INSTRUMENT[tone.pitch.normalize()]
                 ]
                 pitch = [tone.pitch]
-                markup = attachments.Markup(
+                markup = attachments.MarkupOnOff(
                     "\\small {}".format(instrument.short_name), direction="up"
                 )
 
             novent = lily.NOvent(
-                pitch=pitch, delay=tone.delay, duration=tone.duration, markup=markup
+                pitch=pitch,
+                delay=tone.delay,
+                duration=tone.duration,
+                markup_on_off=markup,
             )
             orientation.append(novent)
 

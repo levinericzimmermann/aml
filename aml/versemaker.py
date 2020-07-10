@@ -11,12 +11,14 @@ import quicktions as fractions
 
 from mu.mel import ji
 from mu.sco import old
+from mu.utils import infit
 from mu.utils import tools
 
 from mutools import attachments
 from mutools import lily
 from mutools import mus
 
+from aml import areas
 from aml import breads
 from aml import globals_
 from aml import transcriptions
@@ -39,6 +41,32 @@ class Verse(mus.Segment):
 
 
 class VerseMaker(mus.SegmentMaker):
+    """Class for the generation of musical segments based on the qiroah transcription.
+
+    Apart from obvious decisions during initalisation like which chapter and which verse
+    shall be transcripted, further parameters can be tweaked to influence the resulting
+    musical structure.
+
+    Those tweakable parameters include:
+
+        - use_full_scale: (True, False) = False
+            if True all 7 pelog pitches will be used for the transcription, but if set
+            to False the algorithm will only use those 5 pitch degrees that belong to
+            'pelog nem'
+
+        - harmonic_tolerance: (0 - 1) = 0.5
+            a very high harmonic tolerance won't add any additional harmonic pitches,
+            while a very low tolerance will try to add as many additional harmonic pitches
+            as possible.
+
+        - ro_temperature: (0 - 1) = 0.7
+            a low temperature increases the chance for a beat to get added to the
+            rhythmical orientation line.
+
+        - ro_density: (0 - 1) = 0.5
+            a high density value increases the amount of orientation beats.
+    """
+
     ratio2pitchclass_dict = globals_.RATIO2PITCHCLASS
     orchestration = globals_.ORCHESTRATION
     _segment_class = Verse
@@ -54,12 +82,19 @@ class VerseMaker(mus.SegmentMaker):
         octave_of_first_pitch: int = 0,
         use_full_scale: bool = False,
         tempo_factor: float = 0.5,
-        harmonic_tolerance: float = 0.5,
+        harmonic_tolerance: float = 0.5,  # a very high harmonic tolerance won't add any
+        # additional harmonic pitches, while a very low tolerance will try to add as many
+        # additional harmonic pitches as possible.
         max_rest_size_to_ignore: fractions.Fraction = fractions.Fraction(1, 4),
         maximum_deviation_from_center: float = 0.5,
         # rhythmical orientation data
-        ro_temperature: float = 0.7,
-        ro_density: float = 0.5,
+        ro_temperature: float = 0.7,  # a low temperature increases the chance for a
+        # beat to get added.
+        ro_density: float = 0.5,  # a high density value increases the amount of
+        # orientation beats.
+        area_density_maker: infit.InfIt = infit.Gaussian(0.25, 0.075),  # a higher value
+        # leads to more perforated melodic pitches.
+        area_density_reference_size: fractions.Fraction = fractions.Fraction(1, 2)
     ) -> None:
         self.transcription = self._get_transcription(
             chapter=chapter,
@@ -69,6 +104,12 @@ class VerseMaker(mus.SegmentMaker):
             use_full_scale=use_full_scale,
         )
         self._transcription_melody = old.Melody(tuple(self.transcription[:]))
+        self.areas = areas.Areas.from_melody(
+            self._transcription_melody,
+            self.transcription.spread_metrical_loop,
+            area_density_maker,
+            area_density_reference_size,
+        )
         self.chapter = chapter
         self.verse = verse
         self.tempo_factor = tempo_factor
@@ -154,7 +195,7 @@ class VerseMaker(mus.SegmentMaker):
     def _attach_double_barlines(staff, loop_size: int) -> None:
         for idx, bar in enumerate(staff):
             if idx % loop_size == 0:
-                abjad.attach(abjad.BarLine("||", format_slot="before"), bar[0])
+                abjad.attach(abjad.BarLine(".", format_slot="before"), bar[0])
 
     def __call__(self) -> Verse:
         verse = super().__call__()

@@ -287,20 +287,10 @@ class SpreadMetricalLoop(object):
 
         raise KeyError("No prime contains absolute rhythm {}.".format(absolute_rhythm))
 
-    def get_metricities_for_prime(self, prime: int) -> tuple:
-        return self._absolute_rhythm_and_metricity_per_prime[prime][1]
-
-    def get_rhythms_for_prime(self, prime: int) -> tuple:
-        return self._absolute_rhythm_and_metricity_per_prime[prime][0]
-
-    def get_all_rhythms(self) -> tuple:
-        return self._absolute_rhythm
-
-    def get_all_metricities(self) -> tuple:
-        return self._metricities
-
-    def get_all_rhythm_metricitiy_pairs(self, start=None, stop=None) -> tuple:
-        absolute_rhythm_and_metricities = self._absolute_rhythm_and_metricities
+    @staticmethod
+    def _filter_rhythm_metricity_pairs(
+        absolute_rhythm_and_metricities: tuple, start: float = None, stop: float = None
+    ) -> tuple:
         start_idx = 0
 
         if start:
@@ -320,13 +310,46 @@ class SpreadMetricalLoop(object):
         else:
             stop_idx = len(absolute_rhythm_and_metricities)
 
-        return self._absolute_rhythm_and_metricities[start_idx:stop_idx]
+        return absolute_rhythm_and_metricities[start_idx:stop_idx]
+
+    def get_metricities_for_prime(self, prime: int) -> tuple:
+        return self._absolute_rhythm_and_metricity_per_prime[prime][1]
+
+    def get_rhythms_for_prime(self, prime: int) -> tuple:
+        return self._absolute_rhythm_and_metricity_per_prime[prime][0]
+
+    def get_rhythm_metricity_pairs_for_prime(
+        self, prime: int, start=None, stop=None
+    ) -> tuple:
+        return self._filter_rhythm_metricity_pairs(
+            tuple(zip(*self._absolute_rhythm_and_metricity_per_prime[prime])),
+            start,
+            stop,
+        )
+
+    def get_all_rhythms(self) -> tuple:
+        return self._absolute_rhythm
+
+    def get_all_metricities(self) -> tuple:
+        return self._metricities
+
+    def get_all_rhythm_metricitiy_pairs(self, start=None, stop=None) -> tuple:
+        return self._filter_rhythm_metricity_pairs(
+            self._absolute_rhythm_and_metricities, start, stop
+        )
 
     def get_rhythms_for_instrument(self, instrument: str) -> tuple:
         return self.get_rhythms_for_prime(self.instrument_prime_mapping[instrument])
 
     def get_metricities_for_instrument(self, instrument: str) -> tuple:
         return self.get_metricities_for_prime(self.instrument_prime_mapping[instrument])
+
+    def get_rhythm_metricity_pairs_for_instrument(
+        self, instrument: str, start=None, stop=None
+    ) -> tuple:
+        return self.get_rhythm_metricity_pairs_for_prime(
+            self.instrument_prime_mapping[instrument], start, stop
+        )
 
 
 class MetricalLoop(object):

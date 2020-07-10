@@ -110,7 +110,15 @@ def _make_samples(sample_paths: tuple) -> tuple:
                     )
 
                     if sample_json_name not in files:
-                        pitch_analyser(complete_sample_path, output=True)
+                        if "pizz" in sample.lower():
+                            split_sample_name = sample.split("_")
+                            pitch_name = split_sample_name[2].lower()
+                            frequency = abjad.NamedPitch(pitch_name).hertz
+                            with open(complete_sample_json_path, "w") as f:
+                                json.dump({complete_sample_path: [frequency]}, f)
+
+                        else:
+                            pitch_analyser(complete_sample_path, output=True)
 
                     frequency = json.load(open(complete_sample_json_path, "r"))[
                         complete_sample_path
@@ -178,7 +186,7 @@ class SampleBasedStringSoundEngine(synthesis.BasedCsoundEngine):
         name_of_signals = tuple("aSignal{}".format(idx) for idx in range(n_channels))
 
         volseg = "kvol linseg 0, 0.1, 1, p3 - 0.2, 1, 0.1, 0"
-        diskin2 = "{} diskin2 p4, p5, 0, 1, 6, 4".format(", ".join(name_of_signals))
+        diskin2 = "{} diskin2 p4, p5, 0, 0, 6, 4".format(", ".join(name_of_signals))
         summarized = " + ".join(
             tuple(
                 signal
@@ -224,6 +232,8 @@ class SampleBasedStringSoundEngine(synthesis.BasedCsoundEngine):
             volume = novent.volume
             if not volume:
                 volume = 1
+            else:
+                volume = float(volume)
 
             for sample, expected_freq in samples:
                 pitch_factor = expected_freq / sample.freq
@@ -253,18 +263,25 @@ class SampleBasedStringSoundEngine(synthesis.BasedCsoundEngine):
         #   benutzen, für dynamik 0.7 -> die zweite lautstärke benutzen)
         #   4. davon einfach das erste nehmen
 
+        allowed_dynamic = (0,)
+
         if novent.tremolo:
             pt = ("trem",)
 
         elif novent.string_contact_point == attachments.StringContactPoint("pizzicato"):
             pt = ("pizz",)
+            allowed_dynamic = (1,)
 
         else:
             pt = ("susvib", "arcovib")
 
         allowed_samples = tuple(
             sorted(
-                tuple(s for s in self.samples if s.playing_technique in pt),
+                tuple(
+                    s
+                    for s in self.samples
+                    if s.playing_technique in pt and s.dynamic in allowed_dynamic
+                ),
                 key=lambda s: s.freq,
             )
         )
@@ -344,6 +361,8 @@ class PMStringSoundEngine(synthesis.BasedCsoundEngine):
             volume = novent.volume
             if not volume:
                 volume = 1
+            else:
+                volume = float(volume)
 
             for pitch in novent.pitch:
                 freq = float(pitch) * globals_.CONCERT_PITCH
@@ -522,25 +541,70 @@ class SimpleStringMaker(StringMaker):
 
             return has_previous_pitch
 
-        abs_trans = segment_maker.musdat["transcription"].convert2absolute()
-        for idx, tone in enumerate(abs_trans):
+        sp_dec = infit.Cycle((0, 1))
+        for area in segment_maker.areas:
+            if (
+                not area.pitch.is_empty
+                and area.responsible_string_instrument.name == self.instrument.name
+            ):
+                pitch = tools.find_closest_item(
+                    area.pitch, self.instrument.available_pitches
+                )
 
-            if tone.pitch:
-                if tone.pitch.normalize() in self.available_pitches:
-                    pitch = tools.find_closest_item(
-                        tone.pitch, self.instrument.available_pitches
-                    )
+                for ev_idx, event in enumerate(area.string_events):
+                    volume = 0.685
+                    start, stop, event_type = event
+
+                    if ev_idx > 0 and event_type == 0:
+                        dec = next(sp_dec)
+
+                        # TODO(don't make random decision if pizz or ordinario:
+                        # better find the shortest note and decide this one shall be pizz
+                        # or alternatively the last note)
+                        if dec == 1:
+                            string_contact_point = attachments.StringContactPoint(
+                                "pizzicato"
+                            )
+                            tremolo = None
+                            volume = 2.2
+                        else:
+                            string_contact_point = attachments.StringContactPoint(
+                                "ordinario"
+                            )
+                            tremolo = None
+                    else:
+                        string_contact_point = attachments.StringContactPoint(
+                            "ordinario"
+                        )
+                        tremolo = None
+
                     novent = lily.NOvent(
-                        delay=tone.delay,
-                        duration=tone.duration,
-                        volume=0.8,
+                        delay=start,
+                        duration=stop,
+                        volume=volume,
                         hauptstimme=attachments.Hauptstimme(True),
+                        string_contact_point=string_contact_point,
+                        tremolo=tremolo,
                     )
 
                     self.attach_pitches_to_novent([pitch], novent)
                     nset.append(novent)
 
-            else:
+                for non_event in area.non_string_events:
+                    start, stop = non_event
+                    novent = lily.NOvent(
+                        pitch=[],
+                        delay=start,
+                        duration=stop,
+                        volume=0,
+                        hauptstimme=attachments.Hauptstimme(True),
+                    )
+                    nset.append(novent)
+
+        abs_trans = segment_maker.musdat["transcription"].convert2absolute()
+
+        for idx, tone in enumerate(abs_trans):
+            if not tone.pitch:
                 has_following = has_following_pitch(idx + 1)
                 has_previous = has_following_pitch(idx - 1, lambda x: x - 1)
                 if has_following and has_previous:
@@ -548,7 +612,7 @@ class SimpleStringMaker(StringMaker):
                         pitch=[],
                         delay=tone.delay,
                         duration=tone.duration,
-                        volume=0.8,
+                        volume=0.685,
                         hauptstimme=attachments.Hauptstimme(True),
                     )
                     nset.append(novent)
@@ -556,7 +620,7 @@ class SimpleStringMaker(StringMaker):
     def add_harmonic_pitches(
         self, segment_maker: mus.SegmentMaker, nset: lily.NOventSet
     ) -> None:
-        add_tremolo = infit.Cycle((0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
+        add_tremolo = infit.Cycle((0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0))
 
         for h_novent in segment_maker.musdat["harmonic_pitches"]:
 
@@ -565,13 +629,14 @@ class SimpleStringMaker(StringMaker):
             if pitch.normalize() in self.available_pitches:
 
                 novent = lily.NOvent(
-                    delay=h_novent.delay, duration=h_novent.duration, volume=0.75
+                    delay=h_novent.delay, duration=h_novent.duration, volume=0.5
                 )
 
                 self.attach_pitches_to_novent([pitch], novent)
 
                 if next(add_tremolo):
                     novent.tremolo = attachments.Tremolo()
+                    novent.volume -= 0.25
 
                 nset.append(novent)
 

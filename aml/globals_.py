@@ -205,7 +205,7 @@ class _AdaptedInstrument(abc.ABC):
 
 class _AdaptedCello(abjad.Cello, _AdaptedInstrument):
     normal_pitch_range = (ji.r(1, 4), ji.r(16, 15))
-    harmonic_pitch_range = (ji.r(5, 4), ji.r(5, 1))
+    harmonic_pitch_range = (ji.r(5, 4), ji.r(5, 2))
     artifical_harmonic = 5
 
     def __init__(self, *args, **kwargs):
@@ -215,7 +215,7 @@ class _AdaptedCello(abjad.Cello, _AdaptedInstrument):
 
 class _AdaptedViola(abjad.Viola, _AdaptedInstrument):
     normal_pitch_range = (ji.r(1, 2), ji.r(32, 15))
-    harmonic_pitch_range = (ji.r(2, 1), ji.r(8, 1))
+    harmonic_pitch_range = (ji.r(2, 1), ji.r(4, 1))
     artifical_harmonic = 4
 
     def __init__(self, *args, **kwargs):
@@ -225,7 +225,7 @@ class _AdaptedViola(abjad.Viola, _AdaptedInstrument):
 
 class _AdaptedViolin(abjad.Violin, _AdaptedInstrument):
     normal_pitch_range = (ji.r(3, 4), ji.r(3, 1))
-    harmonic_pitch_range = (ji.r(3, 1), ji.r(12, 1))
+    harmonic_pitch_range = (ji.r(3, 1), ji.r(6, 1))
     artifical_harmonic = 4
 
     def __init__(self, *args, **kwargs):

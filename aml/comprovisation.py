@@ -11,12 +11,25 @@ def process_comprovisation_attachments(novent_line: lily.NOventLine) -> lily.NOv
     new_novent_line = lily.NOventLine([])
     for novent in novent_line.copy():
         if novent.optional:
-            if random.random() > 0.5:
+            # perhaps it is more likely that an optional tone get played by the musicians
+            # than that it won't get played.
+            if random.random() > 0.38:
                 shall_pass = True
             else:
                 shall_pass = False
         else:
             shall_pass = True
+
+        if novent.optional_some_pitches:
+            choosen_pitches = []
+            for pitch_idx, pitch in enumerate(sorted(novent.pitch)):
+                if pitch_idx in novent.optional_some_pitches.optional_pitch_indices:
+                    if random.random() > 0.4:
+                        choosen_pitches.append(pitch)
+                else:
+                    choosen_pitches.append(pitch)
+
+            novent.pitch = choosen_pitches
 
         if shall_pass:
             if isinstance(novent.choose, attachments.ChooseOne):

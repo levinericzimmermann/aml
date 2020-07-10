@@ -12,7 +12,10 @@ if __name__ == "__main__":
         tempo_factor=0.3,
         octave_of_first_pitch=0,
         harmonic_tolerance=0.385,
+        # harmonic_tolerance=0.375,
         ro_temperature=0.7,
+        # ro_temperature=0.65,
+        # ro_density=0.45,
     )
 
     vm.attach(

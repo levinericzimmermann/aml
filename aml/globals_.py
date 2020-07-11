@@ -88,7 +88,7 @@ RATIO2PITCHCLASS = {
             "astf",
             "aftf",
             "axs",  # instead of "bfxf"
-            "btrf",
+            "ars",  # instead of "btrf" for avoiding bb when writing artifical harmonic
             "bf",
         ),
     )
@@ -136,7 +136,7 @@ RATIO2ARTIFICAL_HARMONIC_PITCHCLASS_AND_ARTIFICIAL_HARMONIC_OCTAVE = {
             ("fstf", 0),
             ("dftf", 1),
             ("fxs", 0),  # instead of ("gfxf", 0)
-            ("esxf", 0),
+            ("dxf", 1),  # instead of ("esxf", 1) for avoiding bb
             ("eff", 1),
         ),
     )

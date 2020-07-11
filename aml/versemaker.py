@@ -94,7 +94,7 @@ class VerseMaker(mus.SegmentMaker):
         # orientation beats.
         area_density_maker: infit.InfIt = infit.Gaussian(0.25, 0.075),  # a higher value
         # leads to more perforated melodic pitches.
-        area_density_reference_size: fractions.Fraction = fractions.Fraction(1, 2)
+        area_density_reference_size: fractions.Fraction = fractions.Fraction(1, 2),
     ) -> None:
         self.transcription = self._get_transcription(
             chapter=chapter,
@@ -258,17 +258,25 @@ class VerseMaker(mus.SegmentMaker):
 
     @staticmethod
     def _register_harmonic_pitch(
-        melody_pitch0: ji.JIPitch, melody_pitch1: ji.JIPitch, harmonic_pitch: ji.JIPitch
+        pitches2compare: tuple,
+        harmonic_pitch: ji.JIPitch,
+        get_available_pitches_from_adapted_instrument=None,
     ) -> ji.JIPitch:
+        if get_available_pitches_from_adapted_instrument is None:
+
+            def get_available_pitches_from_adapted_instrument(adapted_instrument):
+                return adapted_instrument.available_pitches
+
         normalized_hp = harmonic_pitch.normalize()
         available_versions = tuple(
             p
-            for p in globals_.INSTRUMENT_NAME2ADAPTED_INSTRUMENT[
-                globals_.PITCH2INSTRUMENT[normalized_hp]
-            ].available_pitches
+            for p in get_available_pitches_from_adapted_instrument(
+                globals_.INSTRUMENT_NAME2ADAPTED_INSTRUMENT[
+                    globals_.PITCH2INSTRUMENT[normalized_hp]
+                ]
+            )
             if p.normalize() == normalized_hp
         )
-        pitches2compare = (melody_pitch0, melody_pitch1)
         version_fitness_pairs = []
         for version in available_versions:
             harmonicity = 0
@@ -327,7 +335,7 @@ class VerseMaker(mus.SegmentMaker):
                 )[0]
 
                 registered_harmonic_pitch = VerseMaker._register_harmonic_pitch(
-                    slice0.melody_pitch, slice1.melody_pitch, harmonic_pitch
+                    (slice0.melody_pitch, slice1.melody_pitch), harmonic_pitch
                 )
                 slice0.harmonic_pitch = registered_harmonic_pitch
                 slice1.harmonic_pitch = registered_harmonic_pitch
@@ -410,10 +418,10 @@ class VerseMaker(mus.SegmentMaker):
             )
 
         registered_hp0 = VerseMaker._register_harmonic_pitch(
-            slice0.melody_pitch, None, hp0
+            (slice0.melody_pitch,), hp0
         )
         registered_hp1 = VerseMaker._register_harmonic_pitch(
-            slice1.melody_pitch, None, hp1
+            (slice1.melody_pitch,), hp1
         )
 
         slice0.harmonic_pitch = registered_hp0

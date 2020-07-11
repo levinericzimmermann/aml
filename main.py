@@ -7,11 +7,11 @@ if __name__ == "__main__":
     vm = versemaker.VerseMaker(
         # 71, 21, tempo_factor=0.35, octave_of_first_pitch=0, harmonic_tolerance=0.385
         59,
-        "opening",
-        # 5,
+        # "opening",
+        5,
         tempo_factor=0.3,
         octave_of_first_pitch=0,
-        harmonic_tolerance=0.385,
+        harmonic_tolerance=0.35,
         # harmonic_tolerance=0.375,
         ro_temperature=0.7,
         # ro_temperature=0.65,

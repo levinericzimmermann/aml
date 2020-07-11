@@ -16,12 +16,14 @@ class Slice(object):
         self,
         start: fractions.Fraction,
         stop: fractions.Fraction,
+        does_slice_start_overlap_with_attack: bool,
         melody_pitch: ji.JIPitch = None,
         harmonic_pitch: ji.JIPitch = None,
         harmonic_field: dict = None,
     ) -> None:
         self.start = start
         self.stop = stop
+        self.does_slice_start_overlap_with_attack = does_slice_start_overlap_with_attack
         self.melody_pitch = melody_pitch
         self.harmonic_pitch = harmonic_pitch
         self.harmonic_field = harmonic_field
@@ -100,7 +102,6 @@ class Bread(object):
         candidates = tuple(
             idx - 1 for idx in self.get_indices_of_slices_with_no_melodic_pitches()
         )
-        candidates += (len(self) - 1,)
         for candidate_idx in candidates:
             try:
                 candidate = self[candidate_idx]
@@ -172,7 +173,7 @@ class Bread(object):
         for tone in adapted_melody.convert2absolute():
             if tone.pitch.is_empty:
                 mp = None
-                slices.append(Slice(tone.delay, tone.duration, mp))
+                slices.append(Slice(tone.delay, tone.duration, False, mp))
             else:
                 mp = tone.pitch
 
@@ -195,10 +196,12 @@ class Bread(object):
                 )[0]
 
                 # add both slices
-                for start, stop in (
-                    (tone.delay, split_position),
-                    (split_position, tone.duration),
+                for start, stop, does_slice_start_overlap_with_attack in (
+                    (tone.delay, split_position, True),
+                    (split_position, tone.duration, False),
                 ):
-                    slices.append(Slice(start, stop, mp))
+                    slices.append(
+                        Slice(start, stop, does_slice_start_overlap_with_attack, mp)
+                    )
 
         return cls(*slices)

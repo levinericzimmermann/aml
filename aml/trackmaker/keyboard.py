@@ -318,7 +318,7 @@ class RightHandKeyboardEngine(synthesis.PyoEngine):
         self._novent_line = comprovisation.process_comprovisation_attachments(
             novent_line
         )
-        self._server = pyo.Server(sr=96000, audio="offline", nchnls=3)
+        self._server = pyo.Server(sr=44100, audio="offline", nchnls=3)
 
     @property
     def server(self) -> pyo.Server:
@@ -342,13 +342,18 @@ class RightHandKeyboardEngine(synthesis.PyoEngine):
                 super().__init__(**args)
                 fadein, fadeout = 0.6, 0.6
                 self.env = pyo.Fader(
-                        fadein=fadein, fadeout=fadeout, dur=self.dur + tail,
-                    )
+                    fadein=fadein, fadeout=fadeout, dur=self.dur + tail,
+                )
 
-                for idx, freq, chnl in zip(range(len(self.freqs)), self.freqs, self.chnl):
+                # print(self.freqs, self.chnl, self.dur)
+
+                for idx, freq, chnl in zip(
+                    range(len(self.freqs)), self.freqs, self.chnl
+                ):
                     generator_name = "generator{}".format(idx)
                     setattr(self, generator_name, _right_hand_synth.SineGenerator(freq))
-                    getattr(self, generator_name).generator.mul *= self.env * next(vol_gen)
+                    new_mul = self.env * next(vol_gen)
+                    getattr(self, generator_name).generator.mul *= new_mul
                     getattr(self, generator_name).out(chnl)
 
                 self.env.play()

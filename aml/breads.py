@@ -20,6 +20,7 @@ class Slice(object):
         melody_pitch: ji.JIPitch = None,
         harmonic_pitch: ji.JIPitch = None,
         harmonic_field: dict = None,
+        has_tonality_flux: bool = False,
     ) -> None:
         self.start = start
         self.stop = stop
@@ -27,6 +28,7 @@ class Slice(object):
         self.melody_pitch = melody_pitch
         self.harmonic_pitch = harmonic_pitch
         self.harmonic_field = harmonic_field
+        self.has_tonality_flux = has_tonality_flux
 
     def __hash__(self) -> int:
         hasht = (self.start, self.stop, self.melody_pitch, self.harmonic_pitch)

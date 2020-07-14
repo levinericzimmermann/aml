@@ -3,6 +3,7 @@ import itertools
 import json
 import operator
 import subprocess
+import random
 
 import quicktions as fractions
 
@@ -295,6 +296,11 @@ class LeftHandKeyboardEngine(synthesis.PyteqEngine):
                             dur,
                             volume=volume,
                             sustain_pedal=1,
+                            impedance=random.uniform(2.2, 2.8),
+                            q_factor=random.uniform(0.4, 1.4),
+                            blooming_energy=random.uniform(0.5, 1.3),
+                            blooming_inertia=random.uniform(0.7, 1.7),
+                            hammer_noise=random.uniform(1.5, 3),
                         )
                     else:
                         tone = midiplug.PyteqTone(
@@ -415,9 +421,8 @@ class KeyboardSoundEngine(synthesis.SoundEngine):
 class SilentKeyboardMaker(mus.TrackMaker):
     _track_class = Keyboard
 
-    @staticmethod
     def _prepare_staves(
-        polyline: old.PolyLine, segment_maker: mus.SegmentMaker
+        self, polyline: old.PolyLine, segment_maker: mus.SegmentMaker
     ) -> old.PolyLine:
         polyline[1][0].margin_markup = attachments.MarginMarkup(
             "{}.{}".format(segment_maker.chapter, segment_maker.verse),
@@ -438,7 +443,7 @@ class SilentKeyboardMaker(mus.TrackMaker):
         for staff in range(meta_track.n_staves - 1):
             pl.append(lily.NOventLine([lily.NOvent(duration=dur, delay=dur)]))
 
-        return self._prepare_staves(pl, segment_maker)
+        return pl
 
     def make_sound_engine(self) -> synthesis.SoundEngine:
         return synthesis.SilenceEngine(1)
@@ -497,7 +502,7 @@ class KeyboardMaker(SilentKeyboardMaker):
         pl[1] = self._make_right_hand(segment_maker)
         pl[2] = self._make_left_hand(segment_maker)
 
-        return self._prepare_staves(pl, segment_maker)
+        return pl
 
     def make_sound_engine(self) -> synthesis.SoundEngine:
         return KeyboardSoundEngine(
@@ -787,18 +792,18 @@ class KeyboardMaker(SilentKeyboardMaker):
     def _mlh_detect_adapted_event_data_depending_on_metricity(
         self, melodic_pitch: ji.JIPitch, harmony: tuple, metricity: float
     ):
-        volume = 0.48
+        volume = 0.49
         pitches = [melodic_pitch]
         attachments_ = dict([])
 
         if metricity > 0.94:
-            volume = 0.7
+            volume = 0.65
             attachments_.update(
                 {"articulation": attachments.ArticulationOnce("accent")}
             )
 
         if metricity > 0.75:
-            volume = 0.675
+            volume = 0.62
 
             if harmony:
                 pitches = list(harmony)
@@ -808,9 +813,9 @@ class KeyboardMaker(SilentKeyboardMaker):
 
         elif metricity > 0.38:
             if metricity > 0.52:
-                volume = 0.62
+                volume = 0.61
             else:
-                volume = 0.595
+                volume = 0.598
 
             if harmony:
                 pitches = sorted(harmony)
@@ -1026,7 +1031,7 @@ class KeyboardMaker(SilentKeyboardMaker):
                 for event in best_solution:
                     start_position, _, pitch = event
                     pitches = [pitch]
-                    volume = 0.45
+                    volume = 0.48
                     attachments_ = {"optional": attachments.Optional()}
                     additional_events.append(
                         (start_position, pitches, volume, attachments_)

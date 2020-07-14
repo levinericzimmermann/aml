@@ -73,7 +73,7 @@ RATIO2PITCHCLASS = {
             "c",
             "cxs",
             "dstf",
-            "dftf",
+            "csts",  # instead of "dftf" for avoiding bb when playing artifical harmonic
             "dqf",
             "dxs",  # instead of "efxf",
             "etrf",
@@ -121,7 +121,7 @@ RATIO2ARTIFICAL_HARMONIC_PITCHCLASS_AND_ARTIFICIAL_HARMONIC_OCTAVE = {
             ("af", -1),
             ("fxs", 0),
             ("gstf", 0),
-            ("betf", -1),
+            ("ats", -1),  # instead of ("betf", -1) for avoiding bb
             ("gqf", 0),
             ("gxs", 0),  # instead of ("afxf", 0),
             ("ctrf", 0),
@@ -158,6 +158,7 @@ class _AdaptedInstrument(abc.ABC):
         self._available_pitches = tuple(
             sorted(self.normal_pitches + self.harmonic_pitches)
         )
+        # self._available_pitches = self._normal_pitches
 
     @abc.abstractproperty
     def normal_pitch_range(self) -> tuple:

@@ -1,3 +1,4 @@
+import copy
 import functools
 import itertools
 import operator
@@ -82,9 +83,14 @@ class VerseMaker(mus.SegmentMaker):
         octave_of_first_pitch: int = 0,
         use_full_scale: bool = False,
         tempo_factor: float = 0.5,
+        harmonic_field_max_n_pitches: int = 4,
+        harmonic_field_minimal_harmonicity: float = 0.135,
         harmonic_tolerance: float = 0.5,  # a very high harmonic tolerance won't add any
         # additional harmonic pitches, while a very low tolerance will try to add as many
         # additional harmonic pitches as possible.
+        harmonic_pitches_add_artifical_harmonics: bool = True,
+        harmonic_pitches_add_normal_pitches: bool = True,
+        harmonic_pitches_maximum_octave_difference_from_melody_pitch: int = 1,
         max_rest_size_to_ignore: fractions.Fraction = fractions.Fraction(1, 4),
         maximum_deviation_from_center: float = 0.5,
         # rhythmical orientation data
@@ -120,8 +126,15 @@ class VerseMaker(mus.SegmentMaker):
             maximum_deviation_from_center,
         )
 
-        self.assign_harmonic_pitches_to_slices(harmonic_tolerance)
-        self.assign_harmonic_fields_to_slices()
+        self.assign_harmonic_pitches_to_slices(
+            harmonic_tolerance,
+            harmonic_pitches_add_artifical_harmonics,
+            harmonic_pitches_add_normal_pitches,
+            harmonic_pitches_maximum_octave_difference_from_melody_pitch,
+        )
+        self.assign_harmonic_fields_to_slices(
+            harmonic_field_max_n_pitches, harmonic_field_minimal_harmonicity
+        )
 
         self.rhythmic_orientation_indices = self._detect_rhythmic_orientation(
             temperature=ro_temperature, density=ro_density
@@ -192,26 +205,39 @@ class VerseMaker(mus.SegmentMaker):
         return transcription
 
     @staticmethod
-    def _attach_double_barlines(staff, loop_size: int) -> None:
-        for idx, bar in enumerate(staff):
-            if idx % loop_size == 0:
+    def _attach_double_barlines(staff, double_barlines_positions: tuple) -> None:
+        for bar, has_double_bar_line in zip(staff, double_barlines_positions):
+            if has_double_bar_line:
                 abjad.attach(abjad.BarLine(".", format_slot="before"), bar[0])
+
+    def _find_double_barlines_positions(self) -> tuple:
+        loop_size = self.transcription.spread_metrical_loop.loop_size
+        loop_positions = tuple(
+            True if idx % loop_size == 0 else False for idx in range(len(self.bars))
+        )
+        return mus.TrackMaker._adapt_bars_by_used_areas(loop_positions, self.used_areas)
 
     def __call__(self) -> Verse:
         verse = super().__call__()
 
-        loop_size = self.transcription.spread_metrical_loop.loop_size
+        # add special bar lines at each start of a new loop
+        double_barlines_positions = self._find_double_barlines_positions()
         for track_name in self.orchestration:
             for staff in getattr(verse, track_name).abjad:
                 if type(staff) == abjad.StaffGroup:
                     for sub_staff in staff:
-                        self._attach_double_barlines(sub_staff, loop_size)
+                        self._attach_double_barlines(
+                            sub_staff, double_barlines_positions
+                        )
                 else:
-                    self._attach_double_barlines(staff, loop_size)
+                    self._attach_double_barlines(staff, double_barlines_positions)
 
         # attach verse attribute (name or number of verse) to resulting verse object
         verse.verse = self.verse
         return verse
+
+    def copy(self) -> "VerseMaker":
+        return copy.deepcopy(self)
 
     @property
     def musdat(self) -> dict:
@@ -231,40 +257,83 @@ class VerseMaker(mus.SegmentMaker):
         )
 
     @property
-    def harmonic_pitches(self) -> lily.NOventSet:
+    def harmonic_pitches(self) -> tuple:
         last_pitch = self.bread[0].harmonic_pitch
         start = self.bread[0].start
         stop = self.bread[0].stop
 
-        ns = lily.NOventSet(size=self.bread[-1].stop)
+        melody_pitch_starts = []
+
+        if self.bread[0].does_slice_start_overlap_with_attack:
+            melody_pitch_starts.append(self.bread[0].start)
+
+        ns = []
+
         for slice_ in self.bread[1:]:
             if slice_.harmonic_pitch == last_pitch:
                 stop = slice_.stop
 
+                if slice_.does_slice_start_overlap_with_attack:
+                    melody_pitch_starts.append(slice_.start)
+
             else:
                 if last_pitch:
                     ns.append(
-                        lily.NOvent(pitch=[last_pitch], delay=start, duration=stop)
+                        (
+                            lily.NOvent(pitch=[last_pitch], delay=start, duration=stop),
+                            tuple(melody_pitch_starts),
+                        )
                     )
 
                 start = slice_.start
                 stop = slice_.stop
                 last_pitch = slice_.harmonic_pitch
+                melody_pitch_starts = []
+
+                if slice_.does_slice_start_overlap_with_attack:
+                    melody_pitch_starts.append(slice_.start)
 
         if last_pitch:
-            ns.append(lily.NOvent(pitch=[last_pitch], delay=start, duration=stop))
+            ns.append(
+                (
+                    lily.NOvent(pitch=[last_pitch], delay=start, duration=stop),
+                    tuple(melody_pitch_starts),
+                )
+            )
 
-        return ns
+        return tuple(ns)
+
+    @staticmethod
+    def _filter_available_pitches_by_max_octave_difference(
+        available_pitches: tuple,
+        orientation_pitch: ji.JIPitch,
+        maximum_octave_difference: int,
+    ) -> tuple:
+        orientation_octave = orientation_pitch.octave
+        new_available_pitches = []
+        for pitch in available_pitches:
+            if abs(pitch.octave - orientation_octave) <= maximum_octave_difference:
+                new_available_pitches.append(pitch)
+
+        if new_available_pitches:
+            return tuple(new_available_pitches)
+
+        else:
+
+            return available_pitches
 
     @staticmethod
     def _register_harmonic_pitch(
         pitches2compare: tuple,
         harmonic_pitch: ji.JIPitch,
         get_available_pitches_from_adapted_instrument=None,
+        maximum_octave_difference: int = None,
     ) -> ji.JIPitch:
         if get_available_pitches_from_adapted_instrument is None:
 
-            def get_available_pitches_from_adapted_instrument(adapted_instrument):
+            def get_available_pitches_from_adapted_instrument(
+                adapted_instrument,
+            ) -> tuple:
                 return adapted_instrument.available_pitches
 
         normalized_hp = harmonic_pitch.normalize()
@@ -286,6 +355,110 @@ class VerseMaker(mus.SegmentMaker):
             version_fitness_pairs.append((version, harmonicity))
 
         return max(version_fitness_pairs, key=operator.itemgetter(1))[0]
+
+    @staticmethod
+    def _register_tonality_flux_pitch(
+        melody_pitch0: ji.JIPitch,
+        melody_pitch1: ji.JIPitch,
+        tonality_flux_pitch0: ji.JIPitch,
+        tonality_flux_pitch1: ji.JIPitch,
+        get_available_pitches_from_adapted_instrument=None,
+        maximum_octave_difference: int = 1,
+    ) -> ji.JIPitch:
+        if get_available_pitches_from_adapted_instrument is None:
+
+            def get_available_pitches_from_adapted_instrument(
+                adapted_instrument,
+            ) -> tuple:
+                return adapted_instrument.available_pitches
+
+        octave_rating = {}
+        available_octaves_per_pitch = []
+        for tf_pitch, m_pitch in (
+            (tonality_flux_pitch0, melody_pitch0),
+            (tonality_flux_pitch1, melody_pitch1),
+        ):
+            normalized_hp = tf_pitch.normalize()
+            available_versions = tuple(
+                p
+                for p in get_available_pitches_from_adapted_instrument(
+                    globals_.INSTRUMENT_NAME2ADAPTED_INSTRUMENT[
+                        globals_.PITCH2INSTRUMENT[normalized_hp]
+                    ]
+                )
+                if p.normalize() == normalized_hp
+            )
+            if maximum_octave_difference is not None:
+                available_versions = VerseMaker._filter_available_pitches_by_max_octave_difference(
+                    available_versions, m_pitch, maximum_octave_difference
+                )
+            version_fitness_pairs = []
+            for version in available_versions:
+                harmonicity = (m_pitch - version).harmonicity_simplified_barlow
+                version_fitness_pairs.append((version, harmonicity))
+
+            sorted_version = tuple(
+                map(
+                    operator.itemgetter(0),
+                    sorted(
+                        version_fitness_pairs, key=operator.itemgetter(1), reverse=True
+                    ),
+                )
+            )
+
+            available_octaves = []
+            for idx, pitch in enumerate(sorted_version):
+                octave = pitch.octave
+                if octave not in octave_rating:
+                    octave_rating.update({octave: 0})
+
+                octave_rating[octave] += idx
+                available_octaves.append(octave)
+
+            available_octaves_per_pitch.append(available_octaves)
+
+        common_octaves = set(available_octaves_per_pitch[0]).intersection(
+            available_octaves_per_pitch[1]
+        )
+        if common_octaves:
+            best_octave = min(
+                tuple((octave, octave_rating[octave]) for octave in common_octaves),
+                key=operator.itemgetter(1),
+            )[0]
+            r0, r1 = (
+                p.register(best_octave)
+                for p in (tonality_flux_pitch0, tonality_flux_pitch1)
+            )
+
+        else:
+            sorted_octaves = tuple(
+                map(
+                    operator.itemgetter(0),
+                    (
+                        sorted(
+                            tuple(
+                                (octave, octave_rating[octave])
+                                for octave in octave_rating
+                            ),
+                            key=operator.itemgetter(1),
+                        )
+                    ),
+                )
+            )
+            best_octaves = []
+            for available_octaves in available_octaves_per_pitch:
+                for octave in sorted_octaves:
+                    if octave in available_octaves:
+                        best_octaves.append(octave)
+                        break
+            r0, r1 = (
+                p.register(octave)
+                for p, octave in zip(
+                    (tonality_flux_pitch0, tonality_flux_pitch1), best_octaves
+                )
+            )
+
+        return r0, r1
 
     @staticmethod
     def _help_complex_melodic_intervals(
@@ -352,6 +525,8 @@ class VerseMaker(mus.SegmentMaker):
         harmonicity_border: float = ji.r(7, 6).harmonicity_simplified_barlow,
         # minimal harmonic closeness for intervals in counter movement
         min_closeness: float = 0.75,
+        maximum_octave_difference: int = 1,
+        get_available_pitches_from_adapted_instrument=None,
     ) -> None:
         movement_direction = slice0.melody_pitch < slice1.melody_pitch
 
@@ -417,17 +592,38 @@ class VerseMaker(mus.SegmentMaker):
                 for mp, avp in zip((p0, p1), available_pitches_per_tone)
             )
 
-        registered_hp0 = VerseMaker._register_harmonic_pitch(
-            (slice0.melody_pitch,), hp0
-        )
-        registered_hp1 = VerseMaker._register_harmonic_pitch(
-            (slice1.melody_pitch,), hp1
+        registered_hp0, registered_hp1 = VerseMaker._register_tonality_flux_pitch(
+            slice0.melody_pitch,
+            slice1.melody_pitch,
+            hp0,
+            hp1,
+            get_available_pitches_from_adapted_instrument,
+            maximum_octave_difference,
         )
 
         slice0.harmonic_pitch = registered_hp0
         slice1.harmonic_pitch = registered_hp1
 
-    def assign_harmonic_pitches_to_slices(self, tolerance: float = 0.5) -> None:
+    def assign_harmonic_pitches_to_slices(
+        self,
+        tolerance: float = 0.5,
+        add_artifical_harmonics: bool = True,
+        add_normal_pitches: bool = True,
+        maximum_octave_difference: int = 1,
+    ) -> None:
+
+        if add_artifical_harmonics and add_normal_pitches:
+            get_available_pitches_from_adapted_instrument = None
+        elif add_artifical_harmonics:
+
+            def get_available_pitches_from_adapted_instrument(ai):
+                return ai.harmonic_pitches
+
+        else:
+
+            def get_available_pitches_from_adapted_instrument(ai):
+                return ai.normal_pitches
+
         for slice0, slice1 in zip(self.bread, self.bread[1:]):
             tests = (
                 slice0.melody_pitch != slice1.melody_pitch,
@@ -463,8 +659,18 @@ class VerseMaker(mus.SegmentMaker):
                 # tonality flux
                 if sd0 == sd1:
                     self._help_tonality_flux(
-                        sd0, slice0, slice1, p0, p1, available_pitches_per_tone
+                        sd0,
+                        slice0,
+                        slice1,
+                        p0,
+                        p1,
+                        available_pitches_per_tone,
+                        maximum_octave_difference=maximum_octave_difference,
+                        get_available_pitches_from_adapted_instrument=get_available_pitches_from_adapted_instrument,
                     )
+
+                    slice0.has_tonality_flux = True
+                    slice1.has_tonality_flux = True
 
                 # complex melodic interval
                 else:
@@ -489,7 +695,11 @@ class VerseMaker(mus.SegmentMaker):
         )
 
     def _find_harmonic_field_candidates(
-        self, idx: int, slice_: breads.Slice, max_n_pitches: int
+        self,
+        idx: int,
+        slice_: breads.Slice,
+        max_n_pitches: int,
+        minimal_harmonicity_for_pitch: float,
     ) -> tuple:
         hf = tuple(
             p.normalize() for p in (slice_.melody_pitch, slice_.harmonic_pitch) if p
@@ -561,12 +771,36 @@ class VerseMaker(mus.SegmentMaker):
                     )
                     for added_pitches in itertools.product(*combination):
                         nhf = hf + tuple(added_pitches)
+
+                        # discard added pitches if their harmonicity value is too low
+
+                        if minimal_harmonicity_for_pitch:
+                            div = len(nhf) - 1
+                            pitch2fitnenss = {
+                                p: sum(
+                                    globals_.HARMONICITY_NET[tuple(sorted((p, p1)))]
+                                    for p1 in nhf
+                                    if p != p1
+                                )
+                                / div
+                                for p in nhf
+                            }
+
+                            nhf = tuple(
+                                p
+                                for p in nhf
+                                if p in hf
+                                or pitch2fitnenss[p] > minimal_harmonicity_for_pitch
+                            )
+
+                        harmonicity = self._get_harmonicity_of_harmony(nhf)
+
                         # only check for added pitches
                         scale_degree2pitch = {
                             globals_.PITCH2SCALE_DEGREE[p]: p
                             for p in tuple(added_pitches)
                         }
-                        harmonicity = self._get_harmonicity_of_harmony(nhf)
+
                         candidates.append((nhf, harmonicity, scale_degree2pitch))
 
                 return tuple(
@@ -593,11 +827,15 @@ class VerseMaker(mus.SegmentMaker):
             candidates_per_slice, (test_for_tonality_flux,)
         )
 
-    def assign_harmonic_fields_to_slices(self, max_n_pitches: int = 4) -> None:
+    def assign_harmonic_fields_to_slices(
+        self, max_n_pitches: int = 4, minimal_harmonicity_for_pitch: float = None
+    ) -> None:
         candidates_per_slice = []
         for idx, slice_ in enumerate(self.bread):
             candidates_per_slice.append(
-                self._find_harmonic_field_candidates(idx, slice_, max_n_pitches)
+                self._find_harmonic_field_candidates(
+                    idx, slice_, max_n_pitches, minimal_harmonicity_for_pitch
+                )
             )
 
         candidates2analyse = tools.split_iterable_by_n(candidates_per_slice, None)
@@ -607,12 +845,14 @@ class VerseMaker(mus.SegmentMaker):
             if can:
                 for solution in self._find_harmonic_fields(can):
                     pitches = solution[0]
+                    div_fitness = len(pitches) - 1
                     pitch2fitnenss = {
                         p: sum(
                             globals_.HARMONICITY_NET[tuple(sorted((p, p1)))]
                             for p1 in pitches
                             if p != p1
                         )
+                        / div_fitness
                         for p in pitches
                     }
                     harmonic_field_per_slice.append(pitch2fitnenss)

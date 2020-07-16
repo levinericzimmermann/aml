@@ -22,24 +22,21 @@ def main() -> versemaker.Verse:
         area_density_maker=infit.Gaussian(0.55, 0.2),
     )
 
-    vm.remove_area(0, 2)
-    # vm.remove_area(15, 17)
-    # vm.remove_area(28, len(vm.bars))
-    vm.remove_area(15, len(vm.bars))
-    vm.repeat_area(2, 6)
+    vm.remove_area(0, 17)
+    vm.remove_area(29, len(vm.bars))
 
-    vm.verse = "0"
+    vm.verse = "1"
 
     vm.attach(
         violin=strings.SimpleStringMaker(
             globals_.VIOLIN,
-            acciaccatura_maker=infit.ActivityLevel(4),
+            acciaccatura_maker=infit.ActivityLevel(3),
             harmonic_pitches_activity=0.4,
             harmonic_pitches_density=0.6,
         ),
         viola=strings.SimpleStringMaker(
             globals_.VIOLA,
-            acciaccatura_maker=infit.ActivityLevel(4),
+            acciaccatura_maker=infit.ActivityLevel(2),
             harmonic_pitches_activity=0.4,
             harmonic_pitches_density=0.6,
         ),
@@ -47,7 +44,7 @@ def main() -> versemaker.Verse:
             globals_.CELLO,
             tremolo_maker=infit.ActivityLevel(0),
             shall_add_optional_pitches=True,
-            acciaccatura_maker=infit.ActivityLevel(4),
+            acciaccatura_maker=infit.ActivityLevel(1),
             harmonic_pitches_activity=0.4,
             harmonic_pitches_density=0.6,
         ),

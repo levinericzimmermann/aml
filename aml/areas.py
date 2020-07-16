@@ -104,6 +104,7 @@ class Area(object):
             self._instrument = None
             self._string_events = tuple([])
             self._sine_events = tuple([])
+
         else:
             self._instrument = globals_.INSTRUMENT_NAME2ADAPTED_INSTRUMENT[
                 globals_.PITCH2INSTRUMENT[self.pitch.normalize()]
@@ -136,6 +137,18 @@ class Area(object):
                 events = ((self.increment, self.stop, 1),)
                 self._string_events = events
                 self._sine_events = events
+
+    def __eq__(self, other) -> bool:
+        try:
+            return all(
+                (
+                    self.increment == other.increment,
+                    self.stop == other.stop,
+                    self.events == other.events,
+                )
+            )
+        except AttributeError:
+            return False
 
     def _find_events2distribute(
         self, density: float, rhythm_metricity_pairs: tuple
@@ -283,6 +296,15 @@ class Area(object):
     @property
     def responsible_string_instrument(self) -> globals_._AdaptedInstrument:
         return self._instrument
+
+    def is_event_overlapping_with_sine_events(self, event: tuple) -> bool:
+        sta, sto, *_ = event
+        for sine_event in self.sine_events:
+            ssta, ssto, *_ = sine_event
+            if not (sta >= ssto or ssta >= sto):
+                return True
+
+        return False
 
 
 class Areas(tuple):

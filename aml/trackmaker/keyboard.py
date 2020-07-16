@@ -30,6 +30,8 @@ from aml import comprovisation
 from aml.keyboard_setups import right_hand_synth as _right_hand_synth
 from aml import globals_
 
+from aml.trackmaker import general
+
 KEYBOARD_SETUP_PATH = "aml/keyboard_setups"
 
 
@@ -219,11 +221,12 @@ KEYBOARD_RATIO2ABJAD_PITCH_PER_ZONE = {
 }
 
 
-class Keyboard(mus.Track):
+class Keyboard(general.AMLTrack):
     def __init__(
         self,
         abjad_data: abjad.StaffGroup,
         sound_engine: synthesis.SoundEngine,
+        title: str = None,
         resolution: int = None,
     ):
         abjad.attach(
@@ -251,7 +254,10 @@ class Keyboard(mus.Track):
         abjad.attach(abjad.Clef("treble^8"), abjad_data[1][0][0][0])
         abjad.attach(abjad.Clef("bass"), abjad_data[1][1][0][0])
 
-        super().__init__(abjad_data, sound_engine, resolution)
+        super().__init__(abjad_data, sound_engine, title, resolution)
+
+    def synthesize(self, name: str) -> subprocess.Popen:
+        self.sound_engine.render(name).wait()
 
 
 class LeftHandKeyboardEngine(synthesis.PyteqEngine):
@@ -324,11 +330,6 @@ class RightHandKeyboardEngine(synthesis.PyoEngine):
         self._novent_line = comprovisation.process_comprovisation_attachments(
             novent_line
         )
-        self._server = pyo.Server(sr=44100, audio="offline", nchnls=3)
-
-    @property
-    def server(self) -> pyo.Server:
-        return self._server
 
     @property
     def duration(self) -> float:
@@ -367,8 +368,7 @@ class RightHandKeyboardEngine(synthesis.PyoEngine):
         return myinstr
 
     def render(self, name: str) -> None:
-        self.server.boot()
-        self.server.recordOptions(
+        globals_.PYO_SERVER.recordOptions(
             dur=self.duration + self._tail + 1,
             filename="{}.wav".format(name),
             sampletype=4,
@@ -401,7 +401,8 @@ class RightHandKeyboardEngine(synthesis.PyoEngine):
         )
         events.play()
         events.stop(wait=self.duration)
-        self.server.start()
+        globals_.PYO_SERVER.start()
+        # self.server.shutdown()
 
 
 class KeyboardSoundEngine(synthesis.SoundEngine):
@@ -415,19 +416,19 @@ class KeyboardSoundEngine(synthesis.SoundEngine):
         rhn = "{}_right".format(name)
         lhn = "{}_left".format(name)
         self.right_hand_engine.render(rhn)
-        self.left_hand_engine.render(lhn)
+        return self.left_hand_engine.render(lhn)
 
 
-class SilentKeyboardMaker(mus.TrackMaker):
+class SilentKeyboardMaker(general.AMLTrackMaker):
     _track_class = Keyboard
 
     def _prepare_staves(
         self, polyline: old.PolyLine, segment_maker: mus.SegmentMaker
     ) -> old.PolyLine:
-        polyline[1][0].margin_markup = attachments.MarginMarkup(
-            "{}.{}".format(segment_maker.chapter, segment_maker.verse),
-            context="StaffGroup",
-        )
+        # polyline[1][0].margin_markup = attachments.MarginMarkup(
+        #     "{}.{}".format(segment_maker.chapter, segment_maker.verse),
+        #     context="StaffGroup",
+        # )
 
         for nol in polyline:
             nol[0].tempo = attachments.Tempo((1, 4), segment_maker.tempo)
@@ -478,7 +479,11 @@ class KeyboardMaker(SilentKeyboardMaker):
         ):
             staves.append(
                 self._convert_novent_line2abjad_staff(
-                    line, self.bars, used_ratio2pitch_class_dict, convertion_method
+                    line,
+                    self.bars,
+                    used_ratio2pitch_class_dict,
+                    self.repeated_areas,
+                    convertion_method,
                 )
             )
 
@@ -488,7 +493,7 @@ class KeyboardMaker(SilentKeyboardMaker):
         # 2. generate sound engine
         sound_engine = self.make_sound_engine()
 
-        return self._track_class(abjad_data, sound_engine)
+        return self._track_class(abjad_data, sound_engine, self.title)
 
     def make_musdat(
         self, segment_maker: mus.SegmentMaker, meta_track: mus.MetaTrack
@@ -1135,48 +1140,49 @@ class KeyboardMaker(SilentKeyboardMaker):
                     )
                     for event in adapted_data_per_available_beat
                 )
-                closest_scale_degree_distance = min(
-                    min(
-                        scale_degrees_distance_per_pitch_per_event,
-                        key=lambda scale_degrees_distance_per_pitch: min(
-                            scale_degrees_distance_per_pitch
-                        ),
-                    )
-                )
-
-                filtered_data_per_available_beat = []
-                for data, scale_degrees_distance_per_pitch in zip(
-                    adapted_data_per_available_beat,
-                    scale_degrees_distance_per_pitch_per_event,
-                ):
-                    rhythmical_data = data[:2]
-                    pitches = data[-1]
-                    pitches = tuple(
-                        p[0]
-                        for p, sdd in zip(pitches, scale_degrees_distance_per_pitch)
-                        if sdd == closest_scale_degree_distance
-                    )
-                    if pitches:
-                        # arbitrary decision which pitch to choose since those that are
-                        # remaining now are all close enough to the repating pitch.
-                        choosen_pitch = pitches[0]
-                        filtered_data_per_available_beat.append(
-                            rhythmical_data + (choosen_pitch,)
+                if scale_degrees_distance_per_pitch_per_event:
+                    closest_scale_degree_distance = min(
+                        min(
+                            scale_degrees_distance_per_pitch_per_event,
+                            key=lambda scale_degrees_distance_per_pitch: min(
+                                scale_degrees_distance_per_pitch
+                            ),
                         )
+                    )
 
-                event = max(
-                    filtered_data_per_available_beat, key=operator.itemgetter(1)
-                )
-                start_position, _, pitch = event
-                pitches = [pitch]
-                volume = 0.45
-                attachments_ = {
-                    "optional": attachments.Optional(),
-                    "articulation_once": attachments.ArticulationOnce("."),
-                }
-                further_adapted_melodic_core.append(
-                    (start_position, pitches, volume, attachments_)
-                )
+                    filtered_data_per_available_beat = []
+                    for data, scale_degrees_distance_per_pitch in zip(
+                        adapted_data_per_available_beat,
+                        scale_degrees_distance_per_pitch_per_event,
+                    ):
+                        rhythmical_data = data[:2]
+                        pitches = data[-1]
+                        pitches = tuple(
+                            p[0]
+                            for p, sdd in zip(pitches, scale_degrees_distance_per_pitch)
+                            if sdd == closest_scale_degree_distance
+                        )
+                        if pitches:
+                            # arbitrary decision which pitch to choose since those that
+                            # are remaining now are all close enough to the repating pitch
+                            choosen_pitch = pitches[0]
+                            filtered_data_per_available_beat.append(
+                                rhythmical_data + (choosen_pitch,)
+                            )
+
+                    event = max(
+                        filtered_data_per_available_beat, key=operator.itemgetter(1)
+                    )
+                    start_position, _, pitch = event
+                    pitches = [pitch]
+                    volume = 0.45
+                    attachments_ = {
+                        # "optional": attachments.Optional(),
+                        "articulation_once": attachments.ArticulationOnce("."),
+                    }
+                    further_adapted_melodic_core.append(
+                        (start_position, pitches, volume, attachments_)
+                    )
 
         further_adapted_melodic_core.append(adapted_melodic_core[-1])
 

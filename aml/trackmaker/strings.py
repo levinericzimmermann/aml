@@ -8,6 +8,7 @@ The expected sample paths are
 """
 
 import abc
+import functools
 import numpy as np
 import itertools
 import operator
@@ -33,9 +34,12 @@ from mutools import mus
 from mutools import lily
 from mutools import synthesis
 
+from aml import areas
 from aml import complex_meters
 from aml import comprovisation
 from aml import globals_
+
+from aml.trackmaker import general
 
 
 ####################################################################################
@@ -43,11 +47,14 @@ from aml import globals_
 ####################################################################################
 
 
-class String(mus.Track):
+class String(general.AMLTrack):
+    _orientation_staff_size = -4
+
     def __init__(
         self,
         abjad_data: abjad.StaffGroup,
         sound_engine: synthesis.SoundEngine,
+        title: str = None,
         resolution: int = None,
     ):
 
@@ -56,17 +63,25 @@ class String(mus.Track):
             abjad_data[0][0][0],
         )
         abjad_data[2].lilypond_type = "RhythmicStaff"
+
         for orientation_staff in (abjad_data[0], abjad_data[2]):
+            abjad.detach(abjad.MetronomeMark, orientation_staff[0][0])
+            abjad.setting(orientation_staff).font_size = self._orientation_staff_size
+            magstep = abjad.Scheme(["magstep", self._orientation_staff_size])
+            abjad.override(orientation_staff).staff_symbol.thickness = magstep
+            abjad.override(orientation_staff).staff_symbol.staff_space = magstep
+
+        for literal in (
+            "\\accidentalStyle dodecaphonic-first",
+            "\\override StemTremolo.slope = #0.37",
+            "\\override StemTremolo.beam-thickness = #0.3",
+            "\\override StemTremolo.beam-width = #1.35",
+        ):
             abjad.attach(
-                abjad.LilyPondLiteral("\\magnifyStaff #4/7", "before"),
-                orientation_staff[0][0],
+                abjad.LilyPondLiteral(literal, "before"), abjad_data[1][0][0],
             )
 
-        abjad.attach(
-            abjad.LilyPondLiteral("\\accidentalStyle dodecaphonic-first", "before"),
-            abjad_data[1][0][0],
-        )
-        super().__init__(abjad_data, sound_engine, resolution)
+        super().__init__(abjad_data, sound_engine, title, resolution)
 
 
 ####################################################################################
@@ -510,7 +525,7 @@ STRING_SOUND_ENGINE = SampleBasedStringSoundEngine
 ####################################################################################
 
 
-class StringMaker(mus.TrackMaker):
+class StringMaker(general.AMLTrackMaker):
     def __init__(self, instrument: abjad.Instrument) -> None:
         self.instrument = instrument
 
@@ -521,22 +536,31 @@ class StringMaker(mus.TrackMaker):
         novent.pitch = pitches
 
         if pitches[0] in self.instrument.harmonic_pitches:
-            abjad_pitch = lily.convert2abjad_pitch(
-                pitches[0] - ji.r(4, 1), globals_.RATIO2PITCHCLASS
-            )
             (
-                added_pitch_class,
-                octave_change,
-            ) = globals_.RATIO2ARTIFICAL_HARMONIC_PITCHCLASS_AND_ARTIFICIAL_HARMONIC_OCTAVE[
-                pitches[0].normalize()
-            ]
-            added_pitch = abjad.NamedPitch(
-                abjad.NamedPitchClass(added_pitch_class),
-                octave=int(abjad_pitch.octave) + octave_change,
-            )
+                abjad_pitch,
+                added_pitch,
+            ) = self._get_abjad_pitch_and_added_pitch_for_harmonic_pitch(pitches[0])
             novent.artifical_harmonic = attachments.ArtificalHarmonicAddedPitch(
                 abjad.PitchSegment((abjad_pitch, added_pitch))
             )
+
+    def _get_abjad_pitch_and_added_pitch_for_harmonic_pitch(
+        self, pitch: ji.JIPitch
+    ) -> tuple:
+        abjad_pitch = lily.convert2abjad_pitch(
+            pitch - ji.r(4, 1), globals_.RATIO2PITCHCLASS
+        )
+        (
+            added_pitch_class,
+            octave_change,
+        ) = globals_.RATIO2ARTIFICAL_HARMONIC_PITCHCLASS_AND_ARTIFICIAL_HARMONIC_OCTAVE[
+            pitch.normalize()
+        ]
+        added_pitch = abjad.NamedPitch(
+            abjad.NamedPitchClass(added_pitch_class),
+            octave=int(abjad_pitch.octave) + octave_change,
+        )
+        return tuple(sorted((abjad_pitch, added_pitch)))
 
     def make_sound_engine(self) -> synthesis.SoundEngine:
         return STRING_SOUND_ENGINE(
@@ -551,9 +575,9 @@ class StringMaker(mus.TrackMaker):
         polyline[1][0].clef = attachments.Clef(
             {"cello": "bass", "viola": "alto", "violin": "treble"}[self.instrument.name]
         )
-        polyline[1][0].margin_markup = attachments.MarginMarkup(
-            "{}.{}".format(segment_maker.chapter, segment_maker.verse)
-        )
+        # polyline[1][0].margin_markup = attachments.MarginMarkup(
+        #     "{}.{}".format(segment_maker.chapter, segment_maker.verse)
+        # )
 
         for nol in polyline:
             nol[0].tempo = attachments.Tempo((1, 4), segment_maker.tempo)
@@ -638,6 +662,12 @@ class StringNOventAdapter(abc.ABC):
     def __call__(self, novent: lily.NOvent) -> None:
         raise NotImplementedError()
 
+    def __eq__(self, other) -> bool:
+        try:
+            return type(self).__name__ == type(other).__name__
+        except AttributeError:
+            return False
+
 
 class ArcoAdapter(StringNOventAdapter):
     def __call__(self, novent: lily.NOvent) -> None:
@@ -685,31 +715,23 @@ class SimpleStringMaker(StringMaker):
     """
 
     _track_class = String
+    _acciaccatura_duration = abjad.Duration(1, 8)
 
     def __init__(
         self,
         instrument: abjad.Instrument,
-        novent_adapter_maker: infit.InfIt = infit.Cycle(
-            (
-                ArcoAdapter(),
-                PizzAdapter(),
-                ArcoAdapter(),
-                # StaccatoAdapter(),
-                # TremoloAdapter(),
-                PizzAdapter(),
-                ArcoAdapter(),
-            )
-        ),
-        harmonic_pitches_density: float = 0.78,
-        harmonic_pitches_activity: float = 0.425,
+        pizz_maker: infit.InfIt = infit.ActivityLevel(3),
+        acciaccatura_maker: infit.InfIt = infit.ActivityLevel(7),
+        glissando_maker: infit.InfIt = infit.ActivityLevel(8),
+        tremolo_maker: infit.InfIt = infit.ActivityLevel(4),
+        harmonic_pitches_density: float = 0.8,
+        harmonic_pitches_activity: float = 0.6,
         harmonic_pitches_min_event_size: fractions.Fraction = fractions.Fraction(3, 16),
-        harmonic_pitches_max_event_size: fractions.Fraction = fractions.Fraction(3, 4),
+        harmonic_pitches_max_event_size: fractions.Fraction = fractions.Fraction(2, 4),
         shall_add_optional_pitches: bool = False,
         optional_pitches_min_size: fractions.Fraction = fractions.Fraction(1, 8),
     ) -> None:
         super().__init__(instrument)
-
-        self.novent_adapter_maker = novent_adapter_maker
 
         try:
             assert harmonic_pitches_density >= harmonic_pitches_activity
@@ -725,6 +747,11 @@ class SimpleStringMaker(StringMaker):
         self.optional_pitches_min_size = optional_pitches_min_size
         self.shall_add_optional_pitches = shall_add_optional_pitches
 
+        self.pizz_maker = pizz_maker
+        self.acciaccatura_maker = acciaccatura_maker
+        self.glissando_maker = glissando_maker
+        self.tremolo_maker = tremolo_maker
+
     def __call__(self) -> String:
         # OVERRIDING DEFAULT CALL METHOD TO MAKE SURE THE ORIENTATION LINES DON'T CONTAIN
         # TIME-SIGNATURES --- THIS IS A DIRTY HACK FOR AVOIDING LILYPOND-ISSUE FOR PRITING
@@ -739,12 +766,17 @@ class SimpleStringMaker(StringMaker):
 
         # 1. make abjad data
         staves = []
-        for line, add_time_signatures in zip(self.musdat, (False, True, False)):
+        for line, add_time_signatures, repeated_areas in zip(
+            self.musdat,
+            (False, True, False),
+            (tuple([]), self.repeated_areas, tuple([])),
+        ):
             staves.append(
                 self._convert_novent_line2abjad_staff(
                     line,
                     self.bars,
                     self.ratio2pitchclass_dict,
+                    repeated_areas,
                     add_time_signatures=add_time_signatures,
                 )
             )
@@ -755,14 +787,110 @@ class SimpleStringMaker(StringMaker):
         # 2. generate sound engine
         sound_engine = self.make_sound_engine()
 
-        return self._track_class(abjad_data, sound_engine)
+        return self._track_class(abjad_data, sound_engine, self.title)
 
     @property
     def available_pitches(self) -> tuple:
         return globals_.SCALE_PER_INSTRUMENT[self.instrument.name]
 
-    def add_transcription(
-        self, segment_maker: mus.SegmentMaker, nset: lily.NOventSet
+    #################################################################################
+    #                    playing techniques / ornamentation methods                 #
+    #################################################################################
+
+    def _find_available_pitches_for_acciaccatura(
+        self,
+        segment_maker: mus.SegmentMaker,
+        main_pitch: ji.JIPitch,
+        start: fractions.Fraction,
+        stop: fractions.Fraction,
+    ) -> tuple:
+        normalized_main_pitch = main_pitch.normalize()
+        available_slices = segment_maker.bread.find_responsible_slices(start, stop)
+        harmonic_fields = tuple(
+            tuple(s.harmonic_field.keys()) for s in available_slices if s.harmonic_field
+        )
+        if harmonic_fields:
+            available_pitches = set(functools.reduce(operator.add, harmonic_fields))
+            available_pitches = tuple(
+                filter(
+                    lambda p: p in self.instrument.scale and p != normalized_main_pitch,
+                    available_pitches,
+                )
+            )
+            return available_pitches
+
+        return tuple([])
+
+    def _find_closest_pitch_from_available_pitch_classes(
+        self, main_pitch: ji.JIPitch, available_pitch_classes: tuple
+    ) -> ji.JIPitch:
+        available_versions = functools.reduce(
+            operator.add,
+            (
+                tuple(
+                    p for p in self.instrument.available_pitches if p.normalize() == pc
+                )
+                for pc in available_pitch_classes
+            ),
+        )
+        return min(available_versions, key=lambda p: abs(p - main_pitch).cents)
+
+    def find_acciaccatura(
+        self,
+        segment_maker: mus.SegmentMaker,
+        main_pitch: ji.JIPitch,
+        start: fractions.Fraction,
+        stop: fractions.Fraction,
+    ) -> attachments.Acciaccatura:
+
+        add_glissando = False
+        available_pitch_classes = self._find_available_pitches_for_acciaccatura(
+            segment_maker, main_pitch, start, stop
+        )
+
+        if not available_pitch_classes:
+            add_glissando = True
+            normalized_main_pitch = main_pitch.normalize()
+            available_pitch_classes = tuple(
+                p for p in self.instrument.scale if p != normalized_main_pitch
+            )
+
+        choosen_pitch = self._find_closest_pitch_from_available_pitch_classes(
+            main_pitch, available_pitch_classes
+        )
+
+        if choosen_pitch in self.instrument.harmonic_pitches:
+            ap0, ap1 = self._get_abjad_pitch_and_added_pitch_for_harmonic_pitch(
+                choosen_pitch
+            )
+            abjad_note = abjad.Chord([ap0, ap1], self._acciaccatura_duration)
+            abjad.tweak(abjad_note.note_heads[1]).style = "harmonic"
+
+        else:
+            abjad_note = abjad.Note(
+                lily.convert2abjad_pitch(choosen_pitch, globals_.RATIO2PITCHCLASS),
+                self._acciaccatura_duration,
+            )
+
+        return attachments.Acciaccatura(
+            [choosen_pitch], abjad_note, add_glissando=add_glissando
+        )
+
+    #################################################################################
+    #                    melodic pitches adding methods                             #
+    #################################################################################
+
+    def _filter_areas(self, areas: tuple) -> tuple:
+        return tuple(
+            filter(
+                lambda area: not area.pitch.is_empty
+                and area.responsible_string_instrument.name == self.instrument.name,
+                areas,
+            )
+        )
+
+    def _add_empty_notes_in_between_hauptstimme_rests(
+        self, nset: lily.NOventSet, segment_maker: mus.SegmentMaker
     ) -> None:
         def has_following_pitch(
             idx: int, operation=lambda x: x + 1, nth_iteration=0
@@ -783,66 +911,6 @@ class SimpleStringMaker(StringMaker):
 
             return has_previous_pitch
 
-        sp_dec = infit.Cycle((0, 1))
-        for area in segment_maker.areas:
-            if (
-                not area.pitch.is_empty
-                and area.responsible_string_instrument.name == self.instrument.name
-            ):
-                pitch = tools.find_closest_item(
-                    area.pitch, self.instrument.available_pitches
-                )
-
-                for ev_idx, event in enumerate(area.string_events):
-                    volume = 0.685
-                    start, stop, event_type = event
-
-                    if ev_idx > 0 and event_type == 0:
-                        dec = next(sp_dec)
-
-                        # TODO(don't make random decision if pizz or arco:
-                        # better find the shortest note and decide this one shall be pizz
-                        # or alternatively the last note) ... make also only pizz. at
-                        # those positions that are inhabitated by both sine wave gen and
-                        # by string instrument.
-                        if dec == 1:
-                            string_contact_point = attachments.StringContactPoint(
-                                "pizzicato"
-                            )
-                            tremolo = None
-                            volume = 2.2
-                        else:
-                            string_contact_point = attachments.StringContactPoint(
-                                "arco"
-                            )
-                            tremolo = None
-                    else:
-                        string_contact_point = attachments.StringContactPoint("arco")
-                        tremolo = None
-
-                    novent = lily.NOvent(
-                        delay=start,
-                        duration=stop,
-                        volume=volume,
-                        hauptstimme=attachments.Hauptstimme(True),
-                        string_contact_point=string_contact_point,
-                        tremolo=tremolo,
-                    )
-
-                    self.attach_pitches_to_novent([pitch], novent)
-                    nset.append(novent)
-
-                for non_event in area.non_string_events:
-                    start, stop = non_event
-                    novent = lily.NOvent(
-                        pitch=[],
-                        delay=start,
-                        duration=stop,
-                        volume=0,
-                        hauptstimme=attachments.Hauptstimme(True),
-                    )
-                    nset.append(novent)
-
         abs_trans = segment_maker.musdat["transcription"].convert2absolute()
 
         for idx, tone in enumerate(abs_trans):
@@ -858,6 +926,107 @@ class SimpleStringMaker(StringMaker):
                         hauptstimme=attachments.Hauptstimme(True),
                     )
                     nset.append(novent)
+
+    @staticmethod
+    def _add_empty_string_notes_from_area(
+        nset: lily.NOventSet, area: areas.Area
+    ) -> None:
+        for non_event in area.non_string_events:
+            start, stop = non_event
+            novent = lily.NOvent(
+                pitch=[],
+                delay=start,
+                duration=stop,
+                volume=0,
+                hauptstimme=attachments.Hauptstimme(True),
+            )
+            nset.append(novent)
+
+    def _detect_shall_play_pizz_per_event_in_area(self, area: areas.Area) -> tuple:
+        allowed_events_for_pizz = tuple(
+            filter(
+                lambda event: event != area.string_events[0]
+                and area.is_event_overlapping_with_sine_events(event),
+                area.string_events,
+            )
+        )
+        n_pizz_events = sum((next(self.pizz_maker) for _ in allowed_events_for_pizz))
+        shall_play_pizz_per_event = []
+        allowed_string_events_sorted_by_duration = sorted(
+            allowed_events_for_pizz, key=lambda event: event[1] - event[0]
+        )
+        for event in area.string_events:
+            shall_play_pizz = False
+            if event in allowed_events_for_pizz:
+                if (
+                    allowed_string_events_sorted_by_duration.index(event)
+                    < n_pizz_events
+                ):
+                    shall_play_pizz = True
+
+            shall_play_pizz_per_event.append(shall_play_pizz)
+
+        return tuple(shall_play_pizz_per_event)
+
+    def _add_string_notes_from_area(
+        self, segment_maker: mus.SegmentMaker, nset: lily.NOventSet, area: areas.Area
+    ) -> None:
+        volume = 0.685
+
+        pitch = tools.find_closest_item(area.pitch, self.instrument.available_pitches)
+
+        shall_play_pizz_per_event = self._detect_shall_play_pizz_per_event_in_area(area)
+
+        for event, shall_play_pizz in zip(
+            area.string_events, shall_play_pizz_per_event
+        ):
+            start, stop, event_type = event
+
+            if event_type == 0:
+                shall_play_pizz = False
+
+            if shall_play_pizz:
+                string_contact_point = attachments.StringContactPoint("pizzicato")
+
+            else:
+                string_contact_point = attachments.StringContactPoint("arco")
+
+            novent = lily.NOvent(
+                delay=start,
+                duration=stop,
+                volume=volume,
+                hauptstimme=attachments.Hauptstimme(True),
+                string_contact_point=string_contact_point,
+            )
+
+            self.attach_pitches_to_novent([pitch], novent)
+
+            if not shall_play_pizz or self._find_available_pitches_for_acciaccatura(
+                segment_maker, pitch, start, stop
+            ):
+                if next(self.acciaccatura_maker):
+                    novent.acciaccatura = self.find_acciaccatura(
+                        segment_maker, pitch, start, stop
+                    )
+
+            if not shall_play_pizz:
+                if next(self.glissando_maker):
+                    pass
+
+            nset.append(novent)
+
+    def add_transcription(
+        self, segment_maker: mus.SegmentMaker, nset: lily.NOventSet
+    ) -> None:
+        for area in self._filter_areas(segment_maker.areas):
+            self._add_string_notes_from_area(segment_maker, nset, area)
+            self._add_empty_string_notes_from_area(nset, area)
+
+        self._add_empty_notes_in_between_hauptstimme_rests(nset, segment_maker)
+
+    #################################################################################
+    #                   harmonic pitches adding methods                             #
+    #################################################################################
 
     def _find_harmonic_pitch_areas(self, segment_maker: mus.SegmentMaker) -> tuple:
         spread_metrical_loop = segment_maker.transcription.spread_metrical_loop
@@ -975,7 +1144,8 @@ class SimpleStringMaker(StringMaker):
         prefered_positions: tuple,
     ) -> tuple:
         novent_adapters = tuple(
-            next(self.novent_adapter_maker) for n in range(n_attacks)
+            PizzAdapter() if next(self.pizz_maker) else ArcoAdapter()
+            for n in range(n_attacks)
         )
 
         max_duration_per_prefered_position = tuple(
@@ -1044,10 +1214,11 @@ class SimpleStringMaker(StringMaker):
                 )
             )
         )
-        return prefered_positions
+        return tuple(sorted(prefered_positions))
 
     def _make_splitted_harmonic_novents(
         self,
+        segment_maker: mus.SegmentMaker,
         pitches: list,
         harmonic_pitch_volume: float,
         harmonic_pitch_area: HarmonicPitchArea,
@@ -1090,6 +1261,7 @@ class SimpleStringMaker(StringMaker):
             avervage_duration_per_attack = n_non_rest_positions / (
                 n_attacks - pf_pos_idx
             )
+
             if n_non_rest_positions <= 0.5:
                 break
 
@@ -1124,6 +1296,28 @@ class SimpleStringMaker(StringMaker):
             self.attach_pitches_to_novent(pitches, novent)
 
             novent_adapter(novent)
+
+            if novent_adapter == PizzAdapter():
+                if self._find_available_pitches_for_acciaccatura(
+                    segment_maker, pitches[0], start, stop
+                ):
+                    if next(self.acciaccatura_maker):
+                        novent.acciaccatura = self.find_acciaccatura(
+                            segment_maker, pitches[0], start, stop
+                        )
+
+            else:
+                if next(self.tremolo_maker):
+                    novent.tremolo = attachments.Tremolo()
+
+                elif next(self.acciaccatura_maker):
+                    novent.acciaccatura = self.find_acciaccatura(
+                        segment_maker, pitches[0], start, stop
+                    )
+
+                elif next(self.glissando_maker):
+                    pass
+
             novents.append(novent)
 
             n_non_rest_positions -= stop_idx - start_idx
@@ -1164,9 +1358,14 @@ class SimpleStringMaker(StringMaker):
             ):
                 if n_positions == 0:
                     start, stop = hpa.slice_start, hpa.slice_stop
+
                 else:
                     start, stop = positions[0][0], hpa.stop
-                    if (stop - start) < self.harmonic_pitches_min_event_size:
+                    if (
+                        stop - start
+                    ) < self.harmonic_pitches_min_event_size and not nset.is_occupied(
+                        hpa.start, start
+                    ):
                         start = hpa.start
 
                 novent = lily.NOvent(
@@ -1177,7 +1376,8 @@ class SimpleStringMaker(StringMaker):
                 )
                 self.attach_pitches_to_novent(pitches, novent)
 
-                nset.append(novent)
+                if not nset.is_occupied(start, stop):
+                    nset.append(novent)
 
             # (2) if the area is just within the allowed area, make a usual arco note.
             elif max_position_difference <= self.harmonic_pitches_max_event_size:
@@ -1196,7 +1396,11 @@ class SimpleStringMaker(StringMaker):
             # (3) if the area is particularily big, split the area in smaller entities
             else:
                 for novent in self._make_splitted_harmonic_novents(
-                    pitches, harmonic_pitch_volume, hpa, melody_pitch_start_positions,
+                    segment_maker,
+                    pitches,
+                    harmonic_pitch_volume,
+                    hpa,
+                    melody_pitch_start_positions,
                 ):
                     nset.append(novent)
 

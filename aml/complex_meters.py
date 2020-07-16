@@ -131,34 +131,45 @@ class Point(object):
         n_loops_added = 0
         closest_index = tools.find_closest_index(expected_position, test_area)
 
-        while test_area[closest_index] == self._loop_size:
-            expected_position -= self._loop_size
-            closest_index = tools.find_closest_index(expected_position, test_area)
-            n_loops_added += 1
-
-        deviation = expected_position - test_area[closest_index]
-        if deviation < 0 and closest_index != 0:
-            candidates = (closest_index, closest_index - 1)
-
-        elif deviation > 0 and test_area[closest_index + 1] != self._loop_size:
-            candidates = (closest_index, closest_index + 1)
+        if test_area[closest_index] <= self.relative_position:
+            while test_area[closest_index] <= self.relative_position:
+                closest_index += 1
 
         else:
-            candidates = None
+            while test_area[closest_index] == self._loop_size:
+                expected_position -= self._loop_size
+                closest_index = tools.find_closest_index(expected_position, test_area)
+                n_loops_added += 1
 
-        if candidates:
-            closest_index = max(
-                (
+            deviation = expected_position - test_area[closest_index]
+            if deviation < 0 and closest_index != 0:
+                if (
+                    n_loops_added == 0
+                    and test_area[closest_index - 1] <= self.relative_position
+                ):
+                    candidates = (closest_index,)
+                else:
+                    candidates = (closest_index, closest_index - 1)
+
+            elif deviation > 0 and test_area[closest_index + 1] != self._loop_size:
+                candidates = (closest_index, closest_index + 1)
+
+            else:
+                candidates = None
+
+            if candidates:
+                closest_index = max(
                     (
-                        idx,
-                        self._rhythm_and_metricity_per_prime[next_metrical_prime][1][
-                            idx
-                        ],
-                    )
-                    for idx in candidates
-                ),
-                key=operator.itemgetter(1),
-            )[0]
+                        (
+                            idx,
+                            self._rhythm_and_metricity_per_prime[next_metrical_prime][
+                                1
+                            ][idx],
+                        )
+                        for idx in candidates
+                    ),
+                    key=operator.itemgetter(1),
+                )[0]
 
         return type(self)(
             next_metrical_prime,

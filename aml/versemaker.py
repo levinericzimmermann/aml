@@ -9,6 +9,7 @@ import uuid
 
 import abjad
 import quicktions as fractions
+import pyo
 
 from mu.mel import ji
 from mu.sco import old
@@ -18,6 +19,7 @@ from mu.utils import tools
 from mutools import attachments
 from mutools import lily
 from mutools import mus
+from mutools import synthesis
 
 from aml import areas
 from aml import breads
@@ -27,7 +29,121 @@ from aml.trackmaker import keyboard
 from aml.trackmaker import strings
 
 
+class _MIXVerse(synthesis.BasedCsoundEngine):
+    # remove_files = False
+    # print_output = True
+
+    cname = ".mix_verse"
+    tail = 0.95
+
+    def __init__(self, sf_path_meta_track_pairs: dict):
+        self.sf_path_meta_track_pairs = sf_path_meta_track_pairs
+        durations = []
+        channels_per_meta_track = {}
+        for meta_track, sf_path_meta_track_pair in sf_path_meta_track_pairs.items():
+            if meta_track != "keyboard":
+                sf_path, _ = sf_path_meta_track_pair
+                info = pyo.sndinfo("{}.wav".format(sf_path))
+                duration, nchannels = info[1], info[3]
+                durations.append(duration)
+                channels_per_meta_track.update({meta_track: nchannels})
+
+        self.duration = max(durations) + self.tail
+
+    @staticmethod
+    def _mk_basic_instrument() -> tuple:
+        summed = "asig = asig0 * p5"
+        outs = "outs asig * p6, asig * p7"
+        return (
+            "instr 1",
+            "asig0 diskin2 p4, 1, 0, 0, 6, 4",
+            summed,
+            outs,
+            "endin\n",
+        )
+
+    def _mk_keyboard_instrument(self) -> tuple:
+        out_left = "(asig0 * p5 * {}) + (asig1 * p5 * {}) + (asig2 * p5 * {})".format(
+            *tuple(
+                self.sf_path_meta_track_pairs[instr][1].volume_left
+                for instr in ("violin", "viola", "cello")
+            )
+        )
+        out_right = "(asig0 * p5 * {}) + (asig1 * p5 * {}) + (asig2 * p5 * {})".format(
+            *tuple(
+                self.sf_path_meta_track_pairs[instr][1].volume_right
+                for instr in ("violin", "viola", "cello")
+            )
+        )
+        outs = "outs {}, {}".format(out_left, out_right)
+        return (
+            "instr 2",
+            "asig0, asig1, asig2 diskin2 p4, 1, 0, 0, 6, 4",
+            outs,
+            "endin",
+        )
+
+    @property
+    def orc(self) -> str:
+        lines = ["0dbfs=1", "nchnls=2\n"]
+        lines.extend(self._mk_basic_instrument())
+        lines.extend(self._mk_keyboard_instrument())
+
+        return "\n".join(lines)
+
+    @property
+    def sco(self) -> str:
+        lines = []
+        for (
+            meta_track,
+            sf_path_meta_track_pair,
+        ) in self.sf_path_meta_track_pairs.items():
+            path = sf_path_meta_track_pair[0]
+            if meta_track == "keyboard":
+                path = "{}_left".format(path)
+
+            path = "{}.wav".format(path)
+
+            lines.append(
+                'i1 0 {} "{}" {} {} {}'.format(
+                    float(self.duration),
+                    path,
+                    sf_path_meta_track_pair[1].volume,
+                    sf_path_meta_track_pair[1].volume_left,
+                    sf_path_meta_track_pair[1].volume_right,
+                )
+            )
+
+        lines.append(
+            'i2 0 {} "{}" 0.4'.format(
+                float(self.duration),
+                "{}_right.wav".format(self.sf_path_meta_track_pairs["keyboard"][0]),
+            )
+        )
+        return "\n".join(lines)
+
+
 class Verse(mus.Segment):
+    def synthesize(self, path: str, sf_name: str, render_each_track: bool = True) -> None:
+        sf_path_meta_track_pairs = {}
+        for meta_track in globals_.ORCHESTRATION:
+            instrument_path = "{}/{}".format(path, meta_track)
+            sf_path = "{}/{}".format(instrument_path, sf_name)
+            tools.igmkdir(instrument_path)
+            track = getattr(self, meta_track)
+            if render_each_track:
+                process = track.synthesize(sf_path)
+                try:
+                    process.wait()
+                except AttributeError:
+                    pass
+            sf_path_meta_track_pairs.update(
+                {meta_track: (sf_path, globals_.ORCHESTRATION[meta_track])}
+            )
+
+        engine = _MIXVerse(sf_path_meta_track_pairs)
+        engine.render("{}/mixed".format(path))
+
     @property
     def score(self) -> abjad.Score:
         # removing orientation lines in all-instruments-score
@@ -90,7 +206,14 @@ class VerseMaker(mus.SegmentMaker):
         # additional harmonic pitches as possible.
         harmonic_pitches_add_artifical_harmonics: bool = True,
         harmonic_pitches_add_normal_pitches: bool = True,
-        harmonic_pitches_maximum_octave_difference_from_melody_pitch: int = 1,
+        harmonic_pitches_tonality_flux_maximum_octave_difference_from_melody_pitch: tuple = (
+            1,
+            0,
+        ),
+        harmonic_pitches_complex_interval_helper_maximum_octave_difference_from_melody_pitch: tuple = (
+            1,
+            0,
+        ),
         max_rest_size_to_ignore: fractions.Fraction = fractions.Fraction(1, 4),
         maximum_deviation_from_center: float = 0.5,
         # rhythmical orientation data
@@ -130,7 +253,8 @@ class VerseMaker(mus.SegmentMaker):
             harmonic_tolerance,
             harmonic_pitches_add_artifical_harmonics,
             harmonic_pitches_add_normal_pitches,
-            harmonic_pitches_maximum_octave_difference_from_melody_pitch,
+            harmonic_pitches_tonality_flux_maximum_octave_difference_from_melody_pitch,
+            harmonic_pitches_complex_interval_helper_maximum_octave_difference_from_melody_pitch,
         )
         self.assign_harmonic_fields_to_slices(
             harmonic_field_max_n_pitches, harmonic_field_minimal_harmonicity
@@ -208,7 +332,11 @@ class VerseMaker(mus.SegmentMaker):
     def _attach_double_barlines(staff, double_barlines_positions: tuple) -> None:
         for bar, has_double_bar_line in zip(staff, double_barlines_positions):
             if has_double_bar_line:
-                abjad.attach(abjad.BarLine(".", format_slot="before"), bar[0])
+                try:
+                    abjad.attach(abjad.BarLine(".", format_slot="before"), bar[0])
+                # don't attach if there is already another bar line (perhaps from repeats)
+                except abjad.PersistentIndicatorError:
+                    pass
 
     def _find_double_barlines_positions(self) -> tuple:
         loop_size = self.transcription.spread_metrical_loop.loop_size
@@ -223,7 +351,12 @@ class VerseMaker(mus.SegmentMaker):
         # add special bar lines at each start of a new loop
         double_barlines_positions = self._find_double_barlines_positions()
         for track_name in self.orchestration:
-            for staff in getattr(verse, track_name).abjad:
+            if track_name in ("violin", "viola", "cello"):
+                staves_to_attach_double_barlines = getattr(verse, track_name).abjad[1:2]
+            else:
+                staves_to_attach_double_barlines = getattr(verse, track_name).abjad
+
+            for staff in staves_to_attach_double_barlines:
                 if type(staff) == abjad.StaffGroup:
                     for sub_staff in staff:
                         self._attach_double_barlines(
@@ -307,19 +440,28 @@ class VerseMaker(mus.SegmentMaker):
     def _filter_available_pitches_by_max_octave_difference(
         available_pitches: tuple,
         orientation_pitch: ji.JIPitch,
-        maximum_octave_difference: int,
+        maximum_octave_difference: tuple,
     ) -> tuple:
         orientation_octave = orientation_pitch.octave
         new_available_pitches = []
         for pitch in available_pitches:
-            if abs(pitch.octave - orientation_octave) <= maximum_octave_difference:
+            oct_difference = pitch.octave - orientation_octave
+            appendable = False
+
+            if oct_difference == 0:
+                appendable = True
+            elif oct_difference > 0:
+                appendable = abs(oct_difference) <= maximum_octave_difference[1]
+            else:
+                appendable = abs(oct_difference) <= maximum_octave_difference[0]
+
+            if appendable:
                 new_available_pitches.append(pitch)
 
         if new_available_pitches:
             return tuple(new_available_pitches)
 
         else:
-
             return available_pitches
 
     @staticmethod
@@ -327,7 +469,7 @@ class VerseMaker(mus.SegmentMaker):
         pitches2compare: tuple,
         harmonic_pitch: ji.JIPitch,
         get_available_pitches_from_adapted_instrument=None,
-        maximum_octave_difference: int = None,
+        maximum_octave_difference: tuple = None,
     ) -> ji.JIPitch:
         if get_available_pitches_from_adapted_instrument is None:
 
@@ -346,6 +488,15 @@ class VerseMaker(mus.SegmentMaker):
             )
             if p.normalize() == normalized_hp
         )
+
+        if maximum_octave_difference:
+            sorted_pitches2compare = sorted(pitches2compare, key=lambda p: p.octave)
+            available_versions = VerseMaker._filter_available_pitches_by_max_octave_difference(
+                available_versions,
+                sorted_pitches2compare[-1],
+                maximum_octave_difference,
+            )
+
         version_fitness_pairs = []
         for version in available_versions:
             harmonicity = 0
@@ -470,6 +621,7 @@ class VerseMaker(mus.SegmentMaker):
         p0: ji.JIPitch,
         p1: ji.JIPitch,
         available_pitches_per_tone: tuple,
+        maximum_octave_difference: tuple = (1, 1),
     ) -> None:
         closeness0, closeness1 = (
             globals_.CLOSENESS_FROM_PX_TO_PY[p0][p1],
@@ -495,8 +647,17 @@ class VerseMaker(mus.SegmentMaker):
                 )
                 for p in (p0, p1)
             )
+
+            # find factors for each melodic pitch according to their duration (it is more
+            # important to have a harmonic interval between the longer lasting pitch)
+            slices_duration = tuple(s.stop - s.start for s in (slice0, slice1))
+            summed_duration = sum(slices_duration)
+            duration_factor0, duration_factor1 = (
+                dur / summed_duration for dur in slices_duration
+            )
+
             available_pitches_and_fitness = tuple(
-                (p, c0 + c1)
+                (p, (c0 * duration_factor0) + (c1 * duration_factor1))
                 for p, c0, c1 in zip(
                     available_pitches, ap_closeness_to_p0, ap_closeness_to_p1
                 )
@@ -508,7 +669,9 @@ class VerseMaker(mus.SegmentMaker):
                 )[0]
 
                 registered_harmonic_pitch = VerseMaker._register_harmonic_pitch(
-                    (slice0.melody_pitch, slice1.melody_pitch), harmonic_pitch
+                    (slice0.melody_pitch, slice1.melody_pitch),
+                    harmonic_pitch,
+                    maximum_octave_difference=maximum_octave_difference,
                 )
                 slice0.harmonic_pitch = registered_harmonic_pitch
                 slice1.harmonic_pitch = registered_harmonic_pitch
@@ -525,7 +688,7 @@ class VerseMaker(mus.SegmentMaker):
         harmonicity_border: float = ji.r(7, 6).harmonicity_simplified_barlow,
         # minimal harmonic closeness for intervals in counter movement
         min_closeness: float = 0.75,
-        maximum_octave_difference: int = 1,
+        maximum_octave_difference: tuple = (1, 1),
         get_available_pitches_from_adapted_instrument=None,
     ) -> None:
         movement_direction = slice0.melody_pitch < slice1.melody_pitch
@@ -609,7 +772,8 @@ class VerseMaker(mus.SegmentMaker):
         tolerance: float = 0.5,
         add_artifical_harmonics: bool = True,
         add_normal_pitches: bool = True,
-        maximum_octave_difference: int = 1,
+        tonality_flux_maximum_octave_difference: tuple = (1, 1),
+        harmonic_pitch_maximum_octave_difference: tuple = (1, 1),
     ) -> None:
 
         if add_artifical_harmonics and add_normal_pitches:
@@ -665,7 +829,7 @@ class VerseMaker(mus.SegmentMaker):
                         p0,
                         p1,
                         available_pitches_per_tone,
-                        maximum_octave_difference=maximum_octave_difference,
+                        maximum_octave_difference=tonality_flux_maximum_octave_difference,
                         get_available_pitches_from_adapted_instrument=get_available_pitches_from_adapted_instrument,
                     )
 
@@ -683,6 +847,7 @@ class VerseMaker(mus.SegmentMaker):
                         p0,
                         p1,
                         available_pitches_per_tone,
+                        maximum_octave_difference=harmonic_pitch_maximum_octave_difference,
                     )
 
         self.bread.extend_harmonic_pitches()
@@ -846,6 +1011,10 @@ class VerseMaker(mus.SegmentMaker):
                 for solution in self._find_harmonic_fields(can):
                     pitches = solution[0]
                     div_fitness = len(pitches) - 1
+
+                    if div_fitness == 0:
+                        div_fitness = 1
+
                     pitch2fitnenss = {
                         p: sum(
                             globals_.HARMONICITY_NET[tuple(sorted((p, p1)))]

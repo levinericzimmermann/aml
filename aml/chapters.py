@@ -1,7 +1,11 @@
 import importlib
 import os
 
+import PIL
+
 from mu.utils import tools
+
+from mutools import mus
 
 from aml import globals_
 from aml import versemaker
@@ -40,7 +44,7 @@ class Chapter(object):
     @staticmethod
     def _sort_verses(verses: tuple) -> tuple:
         # TODO(implement proper sort verses method!)
-        return verses
+        return tuple(sorted(verses, key=lambda verse: int(verse.verse)))
 
     @property
     def name(self) -> str:
@@ -58,30 +62,61 @@ class Chapter(object):
     def notation_path(self) -> str:
         return self._notation_path
 
-    def _render_verses(self) -> None:
+    def _render_verses(self, render_each_track: bool = True) -> None:
         """Generate notation & sound files for each instrument in each verse."""
 
+        notation_processes = []
         for verse in self.verses:
 
             verse_path = "{}/{}".format(self.path, verse.verse)
             tools.igmkdir(verse_path)
+
+            verse.synthesize(verse_path, self.sf_name, render_each_track)
 
             for meta_track in globals_.ORCHESTRATION:
                 instrument_path = "{}/{}".format(verse_path, meta_track)
                 tools.igmkdir(instrument_path)
 
                 track = getattr(verse, meta_track)
-                track.notate("{}/{}".format(instrument_path, self.sco_name))
-                track.synthesize("{}/{}".format(instrument_path, self.sf_name))
+                notation_processes.append(
+                    track.notate("{}/{}".format(instrument_path, self.sco_name))
+                )
+
+        for process in notation_processes:
+            process.wait()
 
     def _make_notation_for_each_instrument(self) -> None:
         # TODO(implement making a notation png for each instrument using pillow)
-        pass
 
-    def __call__(self, render_verses: bool = True) -> None:
+        A2_inches = (23.4, 16.5)
+        A2_pixel = tuple(int(inch * mus.STANDARD_RESOLUTION) for inch in A2_inches)
+
+        distance_height = 0.22  # inches
+        distance_height = int(distance_height * mus.STANDARD_RESOLUTION)
+
+        distance_width = 0.25  # inches
+        distance_width = int(distance_width * mus.STANDARD_RESOLUTION)
+
+        for meta_track in globals_.ORCHESTRATION:
+            notation_path = "{}/notation/{}.pdf".format(self.path, meta_track)
+            image = PIL.Image.new("RGB", A2_pixel, "white")
+            current_height = int(distance_height)
+            for verse in self.verses:
+                verse_path = "{}/{}".format(self.path, verse.verse)
+                instrument_path = "{}/{}".format(verse_path, meta_track)
+                sco_path = "{}/{}.png".format(instrument_path, self.sco_name)
+                sco_image = PIL.Image.open(sco_path)
+                image.paste(sco_image, (distance_width, current_height))
+                current_height += sco_image.height + distance_height
+
+            image.save(notation_path, resolution=mus.STANDARD_RESOLUTION)
+
+    def __call__(
+        self, render_verses: bool = True, render_each_instrument: bool = True
+    ) -> None:
         """Generate png file for each instrument."""
 
         if render_verses:
-            self._render_verses()
+            self._render_verses(render_each_instrument)
 
         self._make_notation_for_each_instrument()

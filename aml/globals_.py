@@ -5,6 +5,7 @@ import operator
 import os
 
 import abjad
+import pyo
 
 from mu.mel import ji
 from mutools import mus
@@ -39,15 +40,19 @@ AVAILABLE_VERSES = tuple(
     )
 )
 
+RESOLUTION = mus.STANDARD_RESOLUTION
+
+
+_STRING_VOLUME = 0.6
 
 ORCHESTRATION = mus.Orchestration(
     *tuple(
         mus.MetaTrack(name, n_staves, volume, panning)
         for name, n_staves, volume, panning in (
-            ("violin", 3, 1, 0.2),
-            ("viola", 3, 1, 0.4),
-            ("cello", 3, 1, 0.6),
-            ("keyboard", 3, 1, 0.8),
+            ("violin", 3, _STRING_VOLUME, 0),
+            ("viola", 3, _STRING_VOLUME, 1),
+            ("cello", 3, _STRING_VOLUME, 0.8),
+            ("keyboard", 3, 1.6, 0.4),
         )
     )
 )
@@ -158,7 +163,6 @@ class _AdaptedInstrument(abc.ABC):
         self._available_pitches = tuple(
             sorted(self.normal_pitches + self.harmonic_pitches)
         )
-        # self._available_pitches = self._normal_pitches
 
     @abc.abstractproperty
     def normal_pitch_range(self) -> tuple:
@@ -382,3 +386,6 @@ TIME_SIGNATURES2COMPOSITION_STRUCTURES = {
 METRICAL_PRIMES = (3, 4, 5)
 
 COMPOSITION_PATH = "aml/composition"
+
+PYO_SERVER = pyo.Server(sr=44100, audio="offline", nchnls=3)
+PYO_SERVER.boot()

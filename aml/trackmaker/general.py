@@ -21,10 +21,10 @@ class AMLTrack(mus.Track):
             abjad.MarkupCommand(
                 "center-column",
                 [
-                    abjad.MarkupCommand("fontsize", -2),
+                    abjad.MarkupCommand("fontsize", -1.95),
                     abjad.MarkupCommand("smallCaps"),
                     "{}".format(self.title),
-                    abjad.MarkupCommand("vspace", -1.1),
+                    abjad.MarkupCommand("vspace", -0.8),
                 ],
             )
         )

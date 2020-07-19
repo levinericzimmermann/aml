@@ -27,6 +27,7 @@ from mu.mel import ji
 from mu.midiplug import midiplug
 from mu.sco import old
 from mu.utils import infit
+from mu.utils import interpolations
 from mu.utils import tools
 
 from mutools import attachments
@@ -38,6 +39,7 @@ from aml import areas
 from aml import complex_meters
 from aml import comprovisation
 from aml import globals_
+from aml import tweaks
 
 from aml.trackmaker import general
 
@@ -529,13 +531,18 @@ class StringMaker(general.AMLTrackMaker):
     def __init__(self, instrument: abjad.Instrument) -> None:
         self.instrument = instrument
 
-    def attach_pitches_to_novent(self, pitches: tuple, novent: lily.NOvent) -> None:
+    def attach_pitches_to_novent(
+        self, pitches: tuple, novent: lily.NOvent, force_harmonic: bool = False
+    ) -> None:
         for p in pitches:
             assert p in self.instrument.available_pitches
 
         novent.pitch = pitches
 
-        if pitches[0] in self.instrument.harmonic_pitches:
+        if force_harmonic:
+            assert pitches[0] - ji.r(4, 1) in self.instrument.normal_pitches
+
+        if pitches[0] in self.instrument.harmonic_pitches or force_harmonic:
             (
                 abjad_pitch,
                 added_pitch,
@@ -722,14 +729,20 @@ class SimpleStringMaker(StringMaker):
         instrument: abjad.Instrument,
         pizz_maker: infit.InfIt = infit.ActivityLevel(3),
         acciaccatura_maker: infit.InfIt = infit.ActivityLevel(7),
+        force_acciaccatura_to_glissando_maker: infit.InfIt = infit.ActivityLevel(0),
+        acciaccatura_glissando_size_maker: infit.InfIt = infit.Cycle((0, 1, 0)),
         glissando_maker: infit.InfIt = infit.ActivityLevel(8),
+        after_glissando_maker: infit.InfIt = infit.ActivityLevel(10),
         tremolo_maker: infit.InfIt = infit.ActivityLevel(4),
         harmonic_pitches_density: float = 0.8,
         harmonic_pitches_activity: float = 0.6,
         harmonic_pitches_min_event_size: fractions.Fraction = fractions.Fraction(3, 16),
         harmonic_pitches_max_event_size: fractions.Fraction = fractions.Fraction(2, 4),
         shall_add_optional_pitches: bool = False,
-        optional_pitches_min_size: fractions.Fraction = fractions.Fraction(1, 8),
+        optional_pitches_min_size: fractions.Fraction = fractions.Fraction(1, 16),
+        optional_pitches_avg_size: fractions.Fraction = fractions.Fraction(3, 16),
+        optional_pitches_maximum_octave_difference_from_melody_pitch: tuple = (1, 0),
+        after_glissando_size=fractions.Fraction(1, 16),
     ) -> None:
         super().__init__(instrument)
 
@@ -745,11 +758,21 @@ class SimpleStringMaker(StringMaker):
         self.harmonic_pitches_min_event_size = harmonic_pitches_min_event_size
         self.harmonic_pitches_max_event_size = harmonic_pitches_max_event_size
         self.optional_pitches_min_size = optional_pitches_min_size
+        self.optional_pitches_avg_size = optional_pitches_avg_size
+        self.optional_pitches_maximum_octave_difference_from_melody_pitch = (
+            optional_pitches_maximum_octave_difference_from_melody_pitch
+        )
         self.shall_add_optional_pitches = shall_add_optional_pitches
 
         self.pizz_maker = pizz_maker
         self.acciaccatura_maker = acciaccatura_maker
+        self.force_acciaccatura_to_glissando_maker = (
+            force_acciaccatura_to_glissando_maker
+        )
+        self.acciaccatura_glissando_size_maker = acciaccatura_glissando_size_maker
         self.glissando_maker = glissando_maker
+        self.after_glissando_maker = after_glissando_maker
+        self.after_glissando_size = after_glissando_size
         self.tremolo_maker = tremolo_maker
 
     def __call__(self) -> String:
@@ -821,9 +844,9 @@ class SimpleStringMaker(StringMaker):
 
         return tuple([])
 
-    def _find_closest_pitch_from_available_pitch_classes(
+    def _sort_pitch_classes_by_closness(
         self, main_pitch: ji.JIPitch, available_pitch_classes: tuple
-    ) -> ji.JIPitch:
+    ) -> tuple:
         available_versions = functools.reduce(
             operator.add,
             (
@@ -833,7 +856,9 @@ class SimpleStringMaker(StringMaker):
                 for pc in available_pitch_classes
             ),
         )
-        return min(available_versions, key=lambda p: abs(p - main_pitch).cents)
+        return tuple(
+            sorted(available_versions, key=lambda p: abs(p - main_pitch).cents)
+        )
 
     def find_acciaccatura(
         self,
@@ -841,9 +866,10 @@ class SimpleStringMaker(StringMaker):
         main_pitch: ji.JIPitch,
         start: fractions.Fraction,
         stop: fractions.Fraction,
+        is_harmonic: bool = False,
+        add_glissando: bool = False,
+        gliss_idx: int = None,
     ) -> attachments.Acciaccatura:
-
-        add_glissando = False
         available_pitch_classes = self._find_available_pitches_for_acciaccatura(
             segment_maker, main_pitch, start, stop
         )
@@ -855,11 +881,27 @@ class SimpleStringMaker(StringMaker):
                 p for p in self.instrument.scale if p != normalized_main_pitch
             )
 
-        choosen_pitch = self._find_closest_pitch_from_available_pitch_classes(
+        possible_pitches = self._sort_pitch_classes_by_closness(
             main_pitch, available_pitch_classes
         )
 
-        if choosen_pitch in self.instrument.harmonic_pitches:
+        if add_glissando:
+            if not gliss_idx:
+                gliss_idx = next(self.acciaccatura_glissando_size_maker)
+            while gliss_idx >= len(possible_pitches):
+                gliss_idx -= 1
+
+            while gliss_idx < 0:
+                gliss_idx += 1
+
+            choosen_pitch = possible_pitches[gliss_idx]
+
+        else:
+            choosen_pitch = possible_pitches[0]
+
+        if is_harmonic:
+            assert choosen_pitch - ji.r(4, 1) in self.instrument.available_pitches
+
             ap0, ap1 = self._get_abjad_pitch_and_added_pitch_for_harmonic_pitch(
                 choosen_pitch
             )
@@ -973,7 +1015,17 @@ class SimpleStringMaker(StringMaker):
     ) -> None:
         volume = 0.685
 
-        pitch = tools.find_closest_item(area.pitch, self.instrument.available_pitches)
+        normalized_area_pitch = area.pitch.normalize()
+
+        pitch = tools.find_closest_item(
+            area.pitch,
+            tuple(
+                filter(
+                    lambda p: p.normalize() == normalized_area_pitch,
+                    self.instrument.available_pitches,
+                )
+            ),
+        )
 
         shall_play_pizz_per_event = self._detect_shall_play_pizz_per_event_in_area(area)
 
@@ -1006,7 +1058,11 @@ class SimpleStringMaker(StringMaker):
             ):
                 if next(self.acciaccatura_maker):
                     novent.acciaccatura = self.find_acciaccatura(
-                        segment_maker, pitch, start, stop
+                        segment_maker,
+                        pitch,
+                        start,
+                        stop,
+                        is_harmonic=bool(novent.artifical_harmonic),
                     )
 
             if not shall_play_pizz:
@@ -1303,7 +1359,11 @@ class SimpleStringMaker(StringMaker):
                 ):
                     if next(self.acciaccatura_maker):
                         novent.acciaccatura = self.find_acciaccatura(
-                            segment_maker, pitches[0], start, stop
+                            segment_maker,
+                            pitches[0],
+                            start,
+                            stop,
+                            is_harmonic=bool(novent.artifical_harmonic),
                         )
 
             else:
@@ -1312,7 +1372,11 @@ class SimpleStringMaker(StringMaker):
 
                 elif next(self.acciaccatura_maker):
                     novent.acciaccatura = self.find_acciaccatura(
-                        segment_maker, pitches[0], start, stop
+                        segment_maker,
+                        pitches[0],
+                        start,
+                        stop,
+                        is_harmonic=bool(novent.artifical_harmonic),
                     )
 
                 elif next(self.glissando_maker):
@@ -1497,61 +1561,6 @@ class SimpleStringMaker(StringMaker):
                 del vectors[vectors.index(smaller)]
         return tuple(vectors)
 
-    def _op_make_novents_from_vectors(
-        self, vectors: tuple, area: tuple, segment_maker: mus.SegmentMaker
-    ) -> tuple:
-        optional_pitch_volume = 0.3
-        optional_pitch_novent_adapter = ArcoAdapter()
-
-        novents = []
-        for vector in vectors:
-            start, stop = (area[idx][0] for idx in vector[0])
-            pitches = vector[1]
-
-            pitches2compare = set([])
-            for slice_ in segment_maker.bread.find_responsible_slices(start, stop):
-                pitches2compare.add(slice_.melody_pitch)
-                pitches2compare.add(slice_.harmonic_pitch)
-
-            if len(pitches) > 1:
-
-                # pitch_getter_function
-                def pgf(instr):
-                    return instr.normal_pitches
-
-            else:
-
-                # pitch_getter_function
-                def pgf(instr):
-                    return instr.available_pitches
-
-            registered_pitches = []
-            for pitch in pitches:
-                registered_pitches.append(
-                    segment_maker._register_harmonic_pitch(
-                        pitches2compare,
-                        pitch,
-                        get_available_pitches_from_adapted_instrument=pgf,
-                    )
-                )
-
-            novent = lily.NOvent(
-                delay=start,
-                duration=stop,
-                volume=optional_pitch_volume,
-                optional=attachments.Optional(),
-            )
-
-            if len(pitches) > 1:
-                novent.choose = attachments.ChooseOne()
-
-            self.attach_pitches_to_novent(registered_pitches, novent)
-            optional_pitch_novent_adapter(novent)
-
-            novents.append(novent)
-
-        return tuple(novents)
-
     def _op_extract_vectors_from_area(self, area: tuple) -> tuple:
         used_pitches_per_point = [[] for i in area]
         vectors = []
@@ -1590,6 +1599,120 @@ class SimpleStringMaker(StringMaker):
 
         return tuple(vectors)
 
+    def _op_make_novents_from_vectors(
+        self, vectors: tuple, area: tuple, segment_maker: mus.SegmentMaker
+    ) -> tuple:
+        optional_pitch_volume = 0.3
+        optional_pitch_novent_adapter = ArcoAdapter()
+
+        novents = []
+        for vector in vectors:
+            start, stop = (area[idx][0] for idx in vector[0])
+            pitches = vector[1]
+
+            pitches2compare = set([])
+            for slice_ in segment_maker.bread.find_responsible_slices(start, stop):
+                if slice_.melody_pitch:
+                    pitches2compare.add(slice_.melody_pitch)
+                if slice_.harmonic_pitch:
+                    pitches2compare.add(slice_.harmonic_pitch)
+
+            if len(pitches) > 1:
+
+                # pitch_getter_function
+                def pgf(instr):
+                    return instr.normal_pitches
+
+            else:
+
+                # pitch_getter_function
+                def pgf(instr):
+                    return instr.available_pitches
+
+            registered_pitches = []
+            for pitch in pitches:
+                registered_pitches.append(
+                    segment_maker._register_harmonic_pitch(
+                        pitches2compare,
+                        pitch,
+                        get_available_pitches_from_adapted_instrument=pgf,
+                        maximum_octave_difference=self.optional_pitches_maximum_octave_difference_from_melody_pitch,
+                    )
+                )
+
+            novent = lily.NOvent(
+                delay=start,
+                duration=stop,
+                volume=optional_pitch_volume,
+                optional=attachments.Optional(),
+            )
+
+            if len(pitches) > 1:
+                novent.choose = attachments.ChooseOne()
+
+            self.attach_pitches_to_novent(registered_pitches, novent)
+            optional_pitch_novent_adapter(novent)
+
+            novents.append(novent)
+
+        return tuple(novents)
+
+    def _op_adapt_optional_novents(
+        self, novent_line: lily.NOventLine, segment_maker: mus.SegmentMaker
+    ) -> None:
+        new_novent_line = []
+        for idx, novent in enumerate(novent_line):
+            splitted = False
+            if novent.optional:
+                if novent.delay > self.optional_pitches_avg_size:
+                    split2n_items = int(novent.delay / self.optional_pitches_avg_size)
+                    if split2n_items > 1:
+                        new_novent_line.extend(
+                            tweaks.split_by_structure(
+                                idx,
+                                split2n_items,
+                                novent_line,
+                                segment_maker,
+                                change_novent_line=False,
+                            )
+                        )
+                        splitted = True
+
+            if not splitted:
+                new_novent_line.append(novent)
+
+        absolute_novent_line = tools.accumulate_from_zero(
+            tuple(fractions.Fraction(item.delay) for item in new_novent_line)
+        )
+        for novent, start, stop in zip(
+            new_novent_line, absolute_novent_line, absolute_novent_line[1:]
+        ):
+            if novent.optional:
+                shall_play_pizz = bool(next(self.pizz_maker))
+                if shall_play_pizz:
+                    novent.string_contact_point = attachments.StringContactPoint(
+                        "pizzicato"
+                    )
+                else:
+                    novent.string_contact_point = attachments.StringContactPoint("arco")
+
+                if (
+                    not shall_play_pizz
+                    or self._find_available_pitches_for_acciaccatura(
+                        segment_maker, novent.pitch[0], start, stop
+                    )
+                ):
+                    if len(novent.pitch) == 1 and next(self.acciaccatura_maker):
+                        novent.acciaccatura = self.find_acciaccatura(
+                            segment_maker,
+                            novent.pitch[0],
+                            start,
+                            stop,
+                            is_harmonic=bool(novent.artifical_harmonic),
+                        )
+
+        return lily.NOventLine(new_novent_line)
+
     def add_optional_pitches(
         self, segment_maker: mus.SegmentMaker, nset: lily.NOventSet,
     ) -> None:
@@ -1618,6 +1741,10 @@ class SimpleStringMaker(StringMaker):
                 ):
                     nset.append(novent)
 
+    #################################################################################
+    #                 general methods for generating novent-line object             #
+    #################################################################################
+
     @staticmethod
     def _detect_hauptstimme_groups(nline: lily.NOventLine) -> tuple:
         indices = []
@@ -1645,6 +1772,45 @@ class SimpleStringMaker(StringMaker):
             else:
                 nline[group[-1]].hauptstimme.is_hauptstimme = False
 
+        has_been_set = False
+        for event in nline:
+            if event.hauptstimme is None:
+                if has_been_set is True:
+                    event.hauptstimme = attachments.Hauptstimme(False)
+
+            elif event.hauptstimme.is_hauptstimme:
+                has_been_set = True
+
+    def _attach_after_glissando(self, novent_line: lily.NOventLine) -> None:
+        for novent0, novent1 in zip(novent_line, novent_line[1:]):
+            tests_if_after_glissando_could_get_attached = (
+                novent0.pitch and novent1.pitch,
+                novent0.string_contact_point
+                != attachments.StringContactPoint("pizzicato"),
+                not novent1.optional,
+                not novent0.acciaccatura,
+                novent0.pitch != novent1.pitch,
+                novent0.duration >= self.after_glissando_size,
+            )
+            if all(tests_if_after_glissando_could_get_attached):
+                interval = novent1.pitch[0] - novent0.pitch[0]
+                if len(novent0.pitch) == 1 and abs(interval) <= ji.r(3, 2):
+                    if next(self.after_glissando_maker):
+                        novent0.glissando = old.GlissandoLine(
+                            interpolations.InterpolationLine(
+                                [
+                                    old.PitchInterpolation(
+                                        novent0.delay - self.after_glissando_size,
+                                        ji.r(1, 1),
+                                    ),
+                                    old.PitchInterpolation(
+                                        self.after_glissando_size, ji.r(1, 1)
+                                    ),
+                                    old.PitchInterpolation(0, interval),
+                                ]
+                            )
+                        )
+
     def make_musdat(
         self, segment_maker: mus.SegmentMaker, meta_track: mus.MetaTrack
     ) -> old.PolyLine:
@@ -1658,16 +1824,9 @@ class SimpleStringMaker(StringMaker):
         nline = nlset.novent_line
         nline = nline.tie_pauses()
 
+        nline = self._op_adapt_optional_novents(nline, segment_maker)
+        self._attach_after_glissando(nline)
         self._manage_hauptstimme_attachments(nline)
-
-        has_been_set = False
-        for event in nline:
-            if event.hauptstimme is None:
-                if has_been_set is True:
-                    event.hauptstimme = attachments.Hauptstimme(False)
-
-            elif event.hauptstimme.is_hauptstimme:
-                has_been_set = True
 
         polyline = old.PolyLine(
             [

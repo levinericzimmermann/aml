@@ -115,7 +115,13 @@ class _MIXVerse(synthesis.BasedCsoundEngine):
             )
 
         lines.append(
-            'i2 0 {} "{}" 0.4'.format(
+            'i1 0 {} "{}" 0.53 1 1'.format(
+                float(self.duration),
+                "{}_very_left.wav".format(self.sf_path_meta_track_pairs["keyboard"][0]),
+            )
+        )
+        lines.append(
+            'i2 0 {} "{}" 0.37'.format(
                 float(self.duration),
                 "{}_right.wav".format(self.sf_path_meta_track_pairs["keyboard"][0]),
             )
@@ -124,7 +130,9 @@ class _MIXVerse(synthesis.BasedCsoundEngine):
 
 
 class Verse(mus.Segment):
-    def synthesize(self, path: str, sf_name: str, render_each_track: bool = True) -> None:
+    def synthesize(
+        self, path: str, sf_name: str, render_each_track: bool = True
+    ) -> None:
         sf_path_meta_track_pairs = {}
         for meta_track in globals_.ORCHESTRATION:
             instrument_path = "{}/{}".format(path, meta_track)

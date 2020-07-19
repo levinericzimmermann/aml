@@ -1,35 +1,5 @@
 if __name__ == "__main__":
     """
-    from mu.utils import infit
-
-    from aml import globals_
-    from aml import versemaker
-    from aml.trackmaker import keyboard
-    from aml.trackmaker import strings
-
-    # vm = versemaker.VerseMaker(
-    #     59,
-    #     5,
-    #     tempo_factor=0.28,
-    #     octave_of_first_pitch=0,
-    #     harmonic_tolerance=0.49,
-    #     ro_temperature=0.7,
-    #     ro_density=0.685,
-    # )
-    # vm.remove_area(17, len(vm.bars))
-
-    # vm = versemaker.VerseMaker(
-    #     59,
-    #     15,
-    #     tempo_factor=0.35,
-    #     octave_of_first_pitch=0,
-    #     harmonic_tolerance=0.3,
-    #     ro_temperature=0.6,
-    #     ro_density=0.685,
-    # )
-    # vm.remove_area(11, len(vm.bars))
-    # vm.repeat_area(0, 4)
-
     # vm = versemaker.VerseMaker(
     #     71,
     #     14,
@@ -122,14 +92,16 @@ if __name__ == "__main__":
 
     # defining chapters
     chap = (
-        chapters.Chapter.from_path("{}/al-hasyr".format(globals_.COMPOSITION_PATH)),
+        chapters.Chapter.from_path(
+            "{}/al-hasyr".format(globals_.COMPOSITION_PATH), allowed_verses=("opening",)
+        ),
         # chapters.Chapter.from_path("{}/an-nuh".format(globals_.COMPOSITION_PATH)),
     )
 
     # render chapters
     # [ch(render_each_instrument=False, render_verses=False) for ch in chap]
-    [ch(render_each_instrument=False, render_verses=True) for ch in chap]
-    # [ch(render_each_instrument=True, render_verses=True) for ch in chap]
+    # [ch(render_each_instrument=False, render_verses=True) for ch in chap]
+    [ch(render_each_instrument=True, render_verses=True) for ch in chap]
 
     # render introduction
 

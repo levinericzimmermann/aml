@@ -18,6 +18,7 @@ from mu.mel import mel
 from mu.mel import ji
 from mu.sco import old
 from mu.utils import infit
+from mu.utils import interpolations
 from mu.utils import tools
 
 from mutools import attachments
@@ -27,7 +28,7 @@ from mutools import synthesis
 
 from aml import complex_meters
 from aml import comprovisation
-from aml.keyboard_setups import right_hand_synth as _right_hand_synth
+from aml.keyboard_setups import midi as _right_hand_synth
 from aml import globals_
 
 from aml.trackmaker import general
@@ -35,8 +36,12 @@ from aml.trackmaker import general
 KEYBOARD_SETUP_PATH = "aml/keyboard_setups"
 
 
-LOWEST_MIDI_NOTE = 23  # starting from b, so that each zone is repeating at each new b
-N_MIDI_NOTES_PER_ZONE = (12, 3 * 12, 3 * 12)  # 1 octave, 3 octaves, 3 octaves
+LOWEST_MIDI_NOTE = 21  # starting from b, so that each zone is repeating at each new b
+N_MIDI_NOTES_PER_ZONE = (
+    14,
+    3 * 12,
+    3 * 12,
+)  # 1 octave + 3 pitches, 3 octaves, 3 octaves
 
 
 def _make_keyboard_zones() -> tuple:
@@ -162,7 +167,37 @@ def _generate_keyboard_midi_note2ji_pitch_mapping():
     return midi_note2ji_pitch_mapping_per_zone
 
 
+REAL_AVAILABLE_PITCHES_FOR_GONG_ZONE = tuple(
+    pitch - ji.r(2, 1)
+    for pitch in functools.reduce(
+        operator.add, globals_.FILTERED_INTONATIONS_PER_SCALE_DEGREE
+    )[1:]
+)
+
+SYMBOLIC_GONG_OCTAVE = -5
+REAL_GONG_PITCH2SYMBOLIC_GONG_PITCH = {
+    p: p.register(SYMBOLIC_GONG_OCTAVE) for p in REAL_AVAILABLE_PITCHES_FOR_GONG_ZONE
+}
+SYMBOLIC_GONG_PITCH2REAL_GONG_PITCH = {
+    value: key for key, value in REAL_GONG_PITCH2SYMBOLIC_GONG_PITCH.items()
+}
+
+
+def _generate_keyboard_midi_note2ji_pitch_mapping_for_gong_zone(
+    midi_note2ji_pitch_mapping_per_zone: dict,
+) -> None:
+    # pitches are set to octave c3 until c4
+    midi_pitch2ji_pitch = {
+        midi_pitch: ji_pitch
+        for midi_pitch, ji_pitch in zip(
+            range(*ZONES[0]), REAL_AVAILABLE_PITCHES_FOR_GONG_ZONE
+        )
+    }
+    midi_note2ji_pitch_mapping_per_zone.update({"gong": midi_pitch2ji_pitch})
+
+
 MIDI_NOTE2JI_PITCH_PER_ZONE = _generate_keyboard_midi_note2ji_pitch_mapping()
+_generate_keyboard_midi_note2ji_pitch_mapping_for_gong_zone(MIDI_NOTE2JI_PITCH_PER_ZONE)
 
 
 def _generate_keyboard_mapping_files():
@@ -214,7 +249,9 @@ _generate_keyboard_mapping_files()
 
 KEYBOARD_RATIO2ABJAD_PITCH_PER_ZONE = {
     zone_name: {
-        ratio: globals_.MIDI_PITCH2ABJAD_PITCH[midi_note]
+        (
+            REAL_GONG_PITCH2SYMBOLIC_GONG_PITCH[ratio] if zone_name == "gong" else ratio
+        ): globals_.MIDI_PITCH2ABJAD_PITCH[midi_note]
         for midi_note, ratio in zone.items()
     }
     for zone_name, zone in MIDI_NOTE2JI_PITCH_PER_ZONE.items()
@@ -235,6 +272,9 @@ class Keyboard(general.AMLTrack):
         )
 
         for staff in abjad_data[1:]:
+            abjad.attach(
+                abjad.LilyPondLiteral("\\magnifyStaff #12/14", "before"), staff[0][0]
+            )
             abjad.attach(
                 abjad.LilyPondLiteral("\\accidentalStyle neo-modern", "before"),
                 staff[0][0],
@@ -260,8 +300,79 @@ class Keyboard(general.AMLTrack):
         self.sound_engine.render(name).wait()
 
 
-class LeftHandKeyboardEngine(synthesis.PyteqEngine):
+class VeryLeftHandKeyboardEngine(synthesis.BasedCsoundEngine):
+    # print_output = True
+    # remove_files = False
+
+    ji_pitch2index = {
+        value: key - LOWEST_MIDI_NOTE
+        for key, value in MIDI_NOTE2JI_PITCH_PER_ZONE["gong"].items()
+    }
+
+    cname = ".gong"
+
+    kempul_samples_path = "aml/keyboard_setups/kempul_samples"
+    adapted_kempul_samples_path = "{}/adapted".format(kempul_samples_path)
+
     def __init__(self, novent_line: lily.NOventLine):
+        for novent in novent_line:
+            novent.pitch = [
+                SYMBOLIC_GONG_PITCH2REAL_GONG_PITCH[p]
+                for p in novent.pitch
+                if p.octave == SYMBOLIC_GONG_OCTAVE
+            ]
+
+        self._novent_line = novent_line
+
+    @property
+    def orc(self) -> str:
+        lines = (
+            "0dbfs=1",
+            "nchnls=1\n",
+            "instr 1",
+            "asig0, asig1 diskin2 p4, 1, 0, 0, 6, 4",
+            "out (asig0 + asig1) * 0.5",
+            "endin\n",
+        )
+        return "\n".join(lines)
+
+    @property
+    def sco(self) -> str:
+        lines = []
+        for novent in self._novent_line.convert2absolute():
+            if novent.pitch:
+                idx = self.ji_pitch2index[novent.pitch[0]]
+                path = "{}/{}.wav".format(self.adapted_kempul_samples_path, idx)
+                duration = float(pyo.sndinfo(path)[1] + novent.delay)
+                line = 'i1 {} {} "{}"'.format(float(novent.delay), duration, path)
+                lines.append(line)
+
+        return "\n".join(lines)
+
+
+class LeftHandKeyboardEngine(synthesis.PyteqEngine):
+    glissando_maker = infit.ActivityLevel(6)
+    glissando_size_maker = infit.Uniform(0.1, 0.22)
+    glissando_pitch_size_maker = infit.Uniform(-150, 150)
+
+    def __init__(self, novent_line: lily.NOventLine):
+        for novent in novent_line:
+            novent.pitch = [p for p in novent.pitch if p.octave != SYMBOLIC_GONG_OCTAVE]
+            if next(self.glissando_maker):
+                glissando_duration = next(self.glissando_size_maker)
+                glissando_size = next(self.glissando_pitch_size_maker)
+                novent.glissando = old.GlissandoLine(
+                    interpolations.InterpolationLine(
+                        [
+                            old.PitchInterpolation(
+                                glissando_duration, mel.SimplePitch(100, glissando_size)
+                            ),
+                            old.PitchInterpolation(novent.duration, ji.r(1, 1)),
+                            old.PitchInterpolation(0, ji.r(1, 1)),
+                        ]
+                    )
+                )
+
         self._novent_line = comprovisation.process_comprovisation_attachments(
             novent_line
         )
@@ -302,6 +413,7 @@ class LeftHandKeyboardEngine(synthesis.PyteqEngine):
                             dur,
                             volume=volume,
                             sustain_pedal=1,
+                            glissando=chord.glissando,
                             impedance=random.uniform(2.2, 2.8),
                             q_factor=random.uniform(0.4, 1.4),
                             blooming_energy=random.uniform(0.5, 1.3),
@@ -325,6 +437,7 @@ class RightHandKeyboardEngine(synthesis.PyoEngine):
 
     _tail = 0.45  # seconds
     _vol_gen = infit.Uniform(0.5, 0.7)
+    _instrument2channel_mapping = {"violin": 0, "viola": 1, "cello": 2}
 
     def __init__(self, novent_line: lily.NOventLine):
         self._novent_line = comprovisation.process_comprovisation_attachments(
@@ -386,7 +499,7 @@ class RightHandKeyboardEngine(synthesis.PyoEngine):
             chnl=pyo.EventSeq(
                 [
                     [
-                        _right_hand_synth.INSTRUMENT2CHANNEL_MAPPING[
+                        self._instrument2channel_mapping[
                             globals_.PITCH2INSTRUMENT[p.normalize()]
                         ]
                         for p in pitch
@@ -402,7 +515,6 @@ class RightHandKeyboardEngine(synthesis.PyoEngine):
         events.play()
         events.stop(wait=self.duration)
         globals_.PYO_SERVER.start()
-        # self.server.shutdown()
 
 
 class KeyboardSoundEngine(synthesis.SoundEngine):
@@ -410,12 +522,15 @@ class KeyboardSoundEngine(synthesis.SoundEngine):
         self, right_hand_nline: lily.NOventLine, left_hand_nline: lily.NOventLine
     ):
         self.right_hand_engine = RightHandKeyboardEngine(right_hand_nline)
-        self.left_hand_engine = LeftHandKeyboardEngine(left_hand_nline)
+        self.left_hand_engine = LeftHandKeyboardEngine(left_hand_nline.copy())
+        self.very_left_hand_engine = VeryLeftHandKeyboardEngine(left_hand_nline.copy())
 
     def render(self, name: str) -> None:
         rhn = "{}_right".format(name)
         lhn = "{}_left".format(name)
+        vlhn = "{}_very_left".format(name)
         self.right_hand_engine.render(rhn)
+        self.very_left_hand_engine.render(vlhn)
         return self.left_hand_engine.render(lhn)
 
 
@@ -462,6 +577,14 @@ class KeyboardMaker(SilentKeyboardMaker):
         # 1. make abjad data
         staves = []
 
+        left_hand_keyboard_ratio2abjad_pitch = {}
+        left_hand_keyboard_ratio2abjad_pitch.update(
+            KEYBOARD_RATIO2ABJAD_PITCH_PER_ZONE["pianoteq"]
+        )
+        left_hand_keyboard_ratio2abjad_pitch.update(
+            KEYBOARD_RATIO2ABJAD_PITCH_PER_ZONE["gong"]
+        )
+
         # depending on the particular sub-staff the ratio2pitch_class_dict and the
         # respective method how to detect abjad pitches does get adapted
         for line, used_ratio2pitch_class_dict, convertion_method in zip(
@@ -469,7 +592,7 @@ class KeyboardMaker(SilentKeyboardMaker):
             (
                 self.ratio2pitchclass_dict,
                 KEYBOARD_RATIO2ABJAD_PITCH_PER_ZONE["sine"],
-                KEYBOARD_RATIO2ABJAD_PITCH_PER_ZONE["pianoteq"],
+                left_hand_keyboard_ratio2abjad_pitch,
             ),
             (
                 None,
@@ -794,6 +917,21 @@ class KeyboardMaker(SilentKeyboardMaker):
         )
         return attachments.OptionalSomePitches(none_melodic_pitch_positions)
 
+    @staticmethod
+    def make_arpeggio_depending_on_melodic_pitch(
+        harmony: tuple, melodic_pitch: ji.JIPitch
+    ) -> attachments.Arpeggio:
+        sorted_harmony = sorted(harmony)
+        n_pitches = len(harmony)
+        pposition = sorted_harmony.index(melodic_pitch)
+
+        if pposition < n_pitches / 2:
+            direction = abjad.enums.Down
+        else:
+            direction = abjad.enums.Up
+
+        return attachments.Arpeggio(direction)
+
     def _mlh_detect_adapted_event_data_depending_on_metricity(
         self, melodic_pitch: ji.JIPitch, harmony: tuple, metricity: float
     ):
@@ -813,8 +951,14 @@ class KeyboardMaker(SilentKeyboardMaker):
             if harmony:
                 pitches = list(harmony)
 
-                if metricity < 0.94:
-                    attachments_.update({"arpeggio": attachments.Arpeggio()})
+                if metricity < 0.94 and len(pitches) > 1:
+                    attachments_.update(
+                        {
+                            "arpeggio": self.make_arpeggio_depending_on_melodic_pitch(
+                                pitches, melodic_pitch
+                            )
+                        }
+                    )
 
         elif metricity > 0.38:
             if metricity > 0.52:
@@ -1188,6 +1332,73 @@ class KeyboardMaker(SilentKeyboardMaker):
 
         return tuple(further_adapted_melodic_core)
 
+    def _mlh_append_gong2melodic_data(
+        self, left_hand_melodic_data: tuple, segment_maker
+    ) -> tuple:
+        available_gong_pitches = tuple(MIDI_NOTE2JI_PITCH_PER_ZONE["gong"].values())
+        loop_size = segment_maker.transcription.spread_metrical_loop.loop_size
+        loop_positions = tuple(
+            True if idx % loop_size == 0 else False
+            for idx in range(len(segment_maker.bars))
+        )
+        absolute_bar_positions = tools.accumulate_from_zero(
+            tuple(float(b.duration) for b in segment_maker.bars)
+        )
+
+        left_hand_melodic_data = list(
+            map(lambda sub: list(sub), left_hand_melodic_data)
+        )
+
+        for has_gong, absolute_bar_position in zip(
+            loop_positions, absolute_bar_positions
+        ):
+            if has_gong:
+                slice_ = segment_maker.bread.find_responsible_slices(
+                    absolute_bar_position, absolute_bar_position + 1
+                )[0]
+                if slice_.harmonic_field:
+                    available_pitches = tuple(
+                        p
+                        for p in available_gong_pitches
+                        if p.normalize() in slice_.harmonic_field
+                    )
+                    available_pitches = sorted(
+                        available_pitches,
+                        key=lambda pitch: slice_.harmonic_field[pitch.normalize()],
+                        reverse=True,
+                    )
+                    if available_pitches:
+                        choosen_pitch = available_pitches[0]
+                        symbolic_pitch = REAL_GONG_PITCH2SYMBOLIC_GONG_PITCH[
+                            choosen_pitch
+                        ]
+                        item = tuple(
+                            idx
+                            for idx, sub in enumerate(left_hand_melodic_data)
+                            if sub[0] == absolute_bar_position
+                        )
+                        if item:
+                            idx = item[0]
+                            left_hand_melodic_data[idx][1].append(symbolic_pitch)
+                            left_hand_melodic_data[idx][-1].update(
+                                {
+                                    "arpeggio": attachments.Arpeggio(
+                                        direction=abjad.enums.Up
+                                    )
+                                }
+                            )
+                        else:
+                            left_hand_melodic_data.append(
+                                (absolute_bar_position, [symbolic_pitch], 0.5, {})
+                            )
+
+        return tuple(
+            sorted(
+                map(lambda sub: tuple(sub), left_hand_melodic_data),
+                key=operator.itemgetter(0),
+            ),
+        )
+
     def _mlh_make_nline(self, left_hand_melodic_data: tuple, segment_maker) -> tuple:
         max_duration = 1
 
@@ -1280,7 +1491,12 @@ class KeyboardMaker(SilentKeyboardMaker):
             available_pitches_for_left_hand,
         )
 
-        # (4) combine data to final result: NOventLine
+        # (4) append gong to mark metrical loops
+        left_hand_melodic_data = self._mlh_append_gong2melodic_data(
+            left_hand_melodic_data, segment_maker
+        )
+
+        # (5) combine data to final result: NOventLine
         nline = self._mlh_make_nline(left_hand_melodic_data, segment_maker)
 
         # remove staccato for events that are longer than 1/8 note

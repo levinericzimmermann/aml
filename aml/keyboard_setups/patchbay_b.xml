@@ -1,5 +1,5 @@
 <!DOCTYPE patchbay>
-<patchbay version="0.5.0" name="patchbay">
+<patchbay version="0.5.0" name="patchbay_b">
  <output-sockets>
   <socket type="jack-midi" client="pyo" exclusive="off" name="pyo 1">
    <plug>output</plug>

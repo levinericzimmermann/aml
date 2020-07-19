@@ -49,4 +49,4 @@ kill $QJACKCTL_PID
 jack_control exit
 
 # shutting down computer
-shutdown 0
+# shutdown 0

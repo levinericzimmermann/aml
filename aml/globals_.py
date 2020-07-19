@@ -43,16 +43,16 @@ AVAILABLE_VERSES = tuple(
 RESOLUTION = mus.STANDARD_RESOLUTION
 
 
-_STRING_VOLUME = 0.6
+_STRING_VOLUME = 0.5
 
 ORCHESTRATION = mus.Orchestration(
     *tuple(
         mus.MetaTrack(name, n_staves, volume, panning)
         for name, n_staves, volume, panning in (
-            ("violin", 3, _STRING_VOLUME, 0),
-            ("viola", 3, _STRING_VOLUME, 1),
-            ("cello", 3, _STRING_VOLUME, 0.8),
-            ("keyboard", 3, 1.6, 0.4),
+            ("violin", 3, _STRING_VOLUME, 0.085),
+            ("viola", 3, _STRING_VOLUME, 0.9),
+            ("cello", 3, _STRING_VOLUME, 0.7),
+            ("keyboard", 3, 3, 0.38),
         )
     )
 )

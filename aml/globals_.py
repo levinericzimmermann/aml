@@ -101,10 +101,14 @@ RATIO2PITCHCLASS = {
 
 
 def _mk_midi_pitch2abjad_pitch_tuple() -> tuple:
+    # pitch_number2pitch_class = tuple(
+    #     abjad.NamedPitchClass(name)
+    #     for name in "c df d ef e f gf g af a bf b".split(" ")
+    # )
     pitch_number2pitch_class = tuple(
-        abjad.NamedPitchClass(name)
-        for name in "c df d ef e f gf g af a bf b".split(" ")
+        abjad.NumberedPitchClass(number) for number in range(12)
     )
+    midi_pitch2abjad_pitch = tuple(abjad.NamedPitch(n - 60) for n in range(127))
     midi_pitch2abjad_pitch = tuple(abjad.NamedPitch(n - 60) for n in range(127))
     return tuple(
         abjad.NamedPitch(

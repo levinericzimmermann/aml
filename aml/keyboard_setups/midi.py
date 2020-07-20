@@ -11,7 +11,10 @@ import pyo
 
 from mu.utils import tools
 
-import settings
+try:
+    import settings
+except ImportError:
+    from aml.keyboard_setups import settings
 
 
 try:
@@ -51,6 +54,8 @@ class SineGenerator(Generator):
         self.generator = pyo.SineLoop(
             freq=freq, feedback=0.015 + ((1 + self.lfo) * 0.025), mul=self.fader
         )
+        # self.generator.stop()
+        self.stop(fadeout=False)
 
     @property
     def mul(self) -> float:
@@ -78,22 +83,25 @@ class SineGenerator(Generator):
         self.lfo.play(dur=dur, delay=delay)
 
         # return & start actual generator
-        return self.generator.play(dur=dur, delay=delay)
+        self.generator.play(dur=dur, delay=delay)
 
-    def stop(self, wait: float = None):
-        fadeout_time = random.uniform(0.5, 1.2)
-        self.fader.setFadeout(fadeout_time)
-        self.fader.stop(wait=wait)
+    def stop(self, wait: float = 0, fadeout: bool = True):
+        if fadeout:
+            fadeout_time = random.uniform(0.5, 1.2)
+            self.fader.setFadeout(fadeout_time)
+            self.fader.stop(wait=wait)
 
-        if wait:
-            waiting_time = fadeout_time + wait
+            if wait:
+                waiting_time = fadeout_time + wait
+            else:
+                waiting_time = fadeout_time
         else:
-            waiting_time = fadeout_time
+            waiting_time = wait
 
         self.lfoo0.stop(wait=waiting_time)
         self.lfoo1.stop(wait=waiting_time)
         self.lfo.stop(wait=waiting_time)
-        return self.generator.stop(wait=waiting_time)
+        self.generator.stop(wait=waiting_time)
 
 
 class GongGenerator(Generator):
@@ -169,10 +177,6 @@ class MidiSynth(object):
         self.sine_mixer = pyo.Mixer(outs=3, chnls=1, mul=0.3)
         self.gong_mixer = pyo.Mixer(outs=4, chnls=1, time=0.045, mul=1)
 
-        # get gui of both mixers
-        self.sine_mixer.ctrl(title="transducer")
-        self.gong_mixer.ctrl(title="gong")
-
         self.gong_spatialisation_cycle = self._make_gong_spatialisation_cycle()
 
         self.last_generator_per_midi_note = {
@@ -205,6 +209,9 @@ class MidiSynth(object):
             self._trigger_off_function,
             arg=list(range(self._n_voices)),
         )
+
+        # for attr in dir(self):
+        #     getattr(self, attr).stop()
 
     @staticmethod
     def _log_trigger_info(voice: int, midi_note: int, velocity: float) -> None:
@@ -318,7 +325,6 @@ class MidiSynth(object):
                     nth_sine_input, self._midi_note2channel[midi_note], 1
                 )
                 nth_sine_input += 1
-
                 gen.append(name)
 
             available_generator_per_midi_note.update({midi_note: tuple(gen)})

@@ -4,14 +4,21 @@ generated musical data.
 """
 
 import functools
-import operator
 import logging
+import operator
 import quicktions as fractions
 
+import abjad
+
+from mu.mel import ji
+
+from mu.sco import old
+
+from mu.utils import interpolations
 from mu.utils import tools
 
-from mutools import mus
 from mutools import lily
+from mutools import mus
 
 from aml import globals_
 
@@ -96,16 +103,101 @@ def shorten(
             return
 
     novent_line.insert(
-        nth_event + 1, lily.NOventLine(pitch=[], delay=value, duration=value)
+        nth_event + 1, lily.NOvent(pitch=[], delay=value, duration=value)
     )
+
+
+def swap_duration(
+    donor: int,
+    receiver: int,
+    swaped_size: fractions.Fraction,
+    novent_line: lily.NOventLine,
+) -> None:
+    assert novent_line[donor].delay > swaped_size
+    novent_line[donor].delay -= swaped_size
+    novent_line[donor].duration -= swaped_size
+    novent_line[receiver].delay += swaped_size
+    novent_line[receiver].duration += swaped_size
+
+
+def swap_pitch(idx0: int, idx1: int, novent_line: lily.NOventLine,) -> None:
+    novent_line[idx0].pitch, novent_line[idx1].pitch = (
+        novent_line[idx1].pitch,
+        novent_line[idx0].pitch,
+    )
+
+
+def swap_identity(
+    idx0: int, idx1: int, novent_line: lily.NOventLine, swap_duration: bool = False
+) -> None:
+    """swaps everything"""
+
+    novent_line[idx0], novent_line[idx1] = (
+        novent_line[idx1],
+        novent_line[idx0],
+    )
+    novent_line[idx0].delay, novent_line[idx1].delay = (
+        novent_line[idx1].delay,
+        novent_line[idx0].delay,
+    )
+    novent_line[idx0].duration, novent_line[idx1].duration = (
+        novent_line[idx1].duration,
+        novent_line[idx0].duration,
+    )
+
+
+def rest(idx: int, novent_line: lily.NOventLine) -> None:
+    previous_is_rest = False
+
+    if idx != 0:
+        previous_is_rest = not novent_line[idx - 1].pitch
+
+    try:
+        following_is_rest = not novent_line[idx + 1].pitch
+    except KeyError:
+        following_is_rest = False
+
+    if previous_is_rest and following_is_rest:
+        added_duration = novent_line[idx].duration + novent_line[idx + 1].duration
+        novent_line[idx - 1].delay += added_duration
+        novent_line[idx - 1].duration += added_duration
+        for _ in range(2):
+            del novent_line[idx]
+
+    elif previous_is_rest:
+        added_duration = novent_line[idx].duration
+        novent_line[idx - 1].delay += added_duration
+        novent_line[idx - 1].duration += added_duration
+        del novent_line[idx]
+
+    elif following_is_rest:
+        added_duration = novent_line[idx].duration
+        novent_line[idx + 1].delay += added_duration
+        novent_line[idx + 1].duration += added_duration
+        del novent_line[idx]
+
+    else:
+        empty_event = lily.NOvent(
+            pitch=[], delay=fractions.Fraction(novent_line[idx].delay)
+        )
+        novent_line[idx] = empty_event
 
 
 def split(
     nth_event: int,
     novent_line: lily.NOventLine,
     *duration_of_splitted_event,
-    change_novent_line: bool = True
+    change_novent_line: bool = True,
+    set_n_novents2rest: int = 0,
 ) -> None:
+    n_splits = len(duration_of_splitted_event)
+    if n_splits < set_n_novents2rest:
+        set_n_novents2rest = n_splits
+
+    is_active_per_novent = tuple(
+        not bool(it) for it in tools.euclid(set_n_novents2rest, n_splits)
+    )
+
     duration = sum(duration_of_splitted_event)
 
     try:
@@ -126,17 +218,29 @@ def split(
     else:
         splitted_novents = []
 
-    for duration in reversed(duration_of_splitted_event):
+    for duration, is_active in zip(
+        reversed(duration_of_splitted_event), is_active_per_novent
+    ):
         splitted_novent = event2split.copy()
         splitted_novent.delay = duration
         splitted_novent.duration = duration
+
         if change_novent_line:
             novent_line.insert(nth_event, splitted_novent)
         else:
+            if not is_active:
+                splitted_novent = lily.NOvent(
+                    pitch=[], delay=duration, duration=duration
+                )
             splitted_novents.insert(0, splitted_novent)
 
     if not change_novent_line:
         return tuple(splitted_novents)
+
+    else:
+        for idx, is_active in enumerate(is_active_per_novent):
+            if not is_active:
+                rest(idx + nth_event, novent_line)
 
 
 def split_by_structure(
@@ -145,16 +249,18 @@ def split_by_structure(
     novent_line: lily.NOventLine,
     verse_maker: mus.SegmentMaker,
     change_novent_line: bool = True,
+    set_n_novents2rest: int = 0,
 ) -> None:
     assert split_to_n_items > 0
 
     if novent_line[nth_event].pitch:
+        novent_line.delay
         absolute_novent_line = tools.accumulate_from_zero(
-            tuple(novent_line.__delay._LinkedList__iterable)
+            tuple(ev.delay for ev in novent_line)
         )
         start, stop = (
-            absolute_novent_line[nth_event],
-            absolute_novent_line[nth_event + 1],
+            fractions.Fraction(absolute_novent_line[nth_event]),
+            fractions.Fraction(absolute_novent_line[nth_event + 1]),
         )
 
         sml = verse_maker.transcription.spread_metrical_loop
@@ -209,7 +315,8 @@ def split_by_structure(
                 nth_event,
                 novent_line,
                 *durations,
-                change_novent_line=change_novent_line
+                change_novent_line=change_novent_line,
+                set_n_novents2rest=set_n_novents2rest,
             )
 
     else:
@@ -218,3 +325,103 @@ def split_by_structure(
         )
         msg += "pitch information."
         logging.warn(msg)
+
+    if not change_novent_line:
+        return [novent_line[nth_event].copy()]
+
+
+def add_glissando(
+    nth_event: int,
+    scale_degrees: tuple,
+    novent_line: lily.NOventLine,
+    durations: tuple = tuple([]),
+    verse_maker: mus.SegmentMaker = None,
+):
+    n_scale_degrees = len(scale_degrees)
+
+    assert verse_maker or durations or n_scale_degrees == 1
+
+    if not durations:
+        if n_scale_degrees > 1:
+            durations = tuple(
+                fractions.Fraction(nv.delay)
+                for nv in split_by_structure(
+                    nth_event,
+                    n_scale_degrees - 1,
+                    novent_line,
+                    verse_maker=verse_maker,
+                    change_novent_line=False,
+                )
+            )
+
+    assert len(durations) == len(scale_degrees) - 1
+
+    novent = novent_line[nth_event].copy()
+    normalized_pitch = novent.pitch[0].normalize()
+
+    instrument = globals_.PITCH2INSTRUMENT[normalized_pitch]
+    octave = novent.pitch[0].octave
+    pitch_zone = tuple(
+        p.register(octave)
+        for p in sorted(
+            tuple(p.copy() for p in globals_.SCALE_PER_INSTRUMENT[instrument])
+        )
+    )
+    pitch_zone = functools.reduce(
+        operator.add,
+        (tuple(p + ji.JIPitch([n - 1]) for p in pitch_zone) for n in range(3)),
+    )
+
+    pitch_null_idx = pitch_zone.index(novent.pitch[0])
+
+    durations += (0,)
+
+    interpolation_line = []
+    for relative_pitch_class, duration in zip(scale_degrees, durations):
+        pc = relative_pitch_class % 7
+        octave = relative_pitch_class // 7
+        pitch = pitch_zone[pc + pitch_null_idx] + ji.JIPitch([octave]) - novent.pitch[0]
+        interpolation_line.append(old.PitchInterpolation(duration, pitch))
+
+    novent_line[nth_event].glissando = old.GlissandoLine(
+        interpolations.InterpolationLine(interpolation_line)
+    )
+
+
+def change_octave(
+    nth_event: int,
+    n_octaves: int,
+    novent_line: lily.NOventLine,
+    change_main_pitches: bool = True,
+    change_acciaccatura_pitches: bool = True,
+) -> None:
+    if change_main_pitches:
+        novent_line[nth_event].pitch = [
+            p + ji.JIPitch([n_octaves]) for p in novent_line[nth_event].pitch
+        ]
+
+    if novent_line[nth_event].acciaccatura and change_acciaccatura_pitches:
+        novent_line[nth_event].acciaccatura.mu_pitches = tuple(
+            p - ji.r(2, 1) for p in novent_line[nth_event].acciaccatura.mu_pitches
+        )
+        previous_abjad_note = novent_line[nth_event].acciaccatura.abjad
+        novent_line[nth_event].acciaccatura.abjad = abjad.Note(
+            abjad.NamedPitch(
+                name=previous_abjad_note.written_pitch.pitch_class.name,
+                octave=previous_abjad_note.written_pitch.octave.number + n_octaves,
+            ),
+            abjad.Duration(previous_abjad_note.written_duration),
+        )
+
+
+def set_acciaccatura_pitch(
+    nth_event: int,
+    pitch: ji.JIPitch,
+    novent_line: lily.NOventLine,
+    change_main_pitches: bool = True,
+) -> None:
+    novent_line[nth_event].acciaccatura.abjad = abjad.Note(
+        lily.convert2abjad_pitch(pitch, globals_.RATIO2PITCHCLASS),
+        abjad.Duration(1, 8),
+    )
+    novent_line[nth_event].acciaccatura.mu_pitches = [pitch]

@@ -6,11 +6,13 @@ import random
 from mutools import attachments
 from mutools import lily
 
+from aml import globals_
+
 
 def process_comprovisation_attachments(novent_line: lily.NOventLine) -> lily.NOventLine:
     new_novent_line = lily.NOventLine([])
     for novent in novent_line.copy():
-        if novent.optional:
+        if globals_.ADD_COMPROVISATION and novent.optional:
             # perhaps it is more likely that an optional tone get played by the musicians
             # than that it won't get played.
             if random.random() > 0.38:
@@ -24,7 +26,7 @@ def process_comprovisation_attachments(novent_line: lily.NOventLine) -> lily.NOv
             choosen_pitches = []
             for pitch_idx, pitch in enumerate(sorted(novent.pitch)):
                 if pitch_idx in novent.optional_some_pitches.optional_pitch_indices:
-                    if random.random() > 0.4:
+                    if not globals_.ADD_COMPROVISATION or random.random() > 0.4:
                         choosen_pitches.append(pitch)
                 else:
                     choosen_pitches.append(pitch)

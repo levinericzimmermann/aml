@@ -92,6 +92,7 @@ class Area(object):
         density: float,
         density_reference: fractions.Fraction,
         spread_metrical_loop: complex_meters.SpreadMetricalLoop,
+        min_split_size: fractions.Fraction(1, 4),
     ):
         self._increment = fractions.Fraction(increment)
         self._stop = fractions.Fraction(stop)
@@ -112,7 +113,7 @@ class Area(object):
 
             # only split events if the complete duration of the event is bigger than one
             # quarter note.
-            if self.duration > fractions.Fraction(1, 4):
+            if self.duration > min_split_size:
                 # where (start, metricity)
                 rmp = spread_metrical_loop.get_rhythm_metricity_pairs_for_instrument(
                     self._instrument.name, self.increment, self.stop
@@ -321,6 +322,7 @@ class Areas(tuple):
         spread_metrical_loop: complex_meters.SpreadMetricalLoop,
         density_maker: infit.InfIt = infit.Gaussian(0.5, 0.2),
         density_reference: fractions.Fraction = fractions.Fraction(2, 1),
+        min_split_size: fractions.Fraction = fractions.Fraction(1, 4),
     ) -> "Areas":
         areas = []
         absolute_melody = melody.convert2absolute()
@@ -338,6 +340,7 @@ class Areas(tuple):
                         next(density_maker),
                         density_reference,
                         spread_metrical_loop,
+                        min_split_size,
                     )
                 )
                 last_events = [(tone, absolute_tone)]
@@ -350,6 +353,7 @@ class Areas(tuple):
                 next(density_maker),
                 density_reference,
                 spread_metrical_loop,
+                min_split_size,
             )
         )
 

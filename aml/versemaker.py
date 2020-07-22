@@ -1,14 +1,15 @@
 import copy
 import functools
 import itertools
+import json
 import operator
 import os
-import json
 import pickle
 import uuid
 
 import abjad
 import quicktions as fractions
+
 import pyo
 
 from mu.mel import ji
@@ -25,6 +26,7 @@ from aml import areas
 from aml import breads
 from aml import globals_
 from aml import transcriptions
+
 from aml.trackmaker import keyboard
 from aml.trackmaker import strings
 
@@ -56,8 +58,10 @@ class _MIXVerse(synthesis.BasedCsoundEngine):
         outs = "outs asig * p6, asig * p7"
         return (
             "instr 1",
-            "asig0 diskin2 p4, 1, 0, 0, 6, 4",
+            "asig0 diskin2 p4, 1",
             summed,
+            "gaSendL  =        gaSendL + (asig/3 * p6)",
+            "gaSendR  =        gaSendR + (asig/3 * p7)",
             outs,
             "endin\n",
         )
@@ -78,14 +82,25 @@ class _MIXVerse(synthesis.BasedCsoundEngine):
         outs = "outs {}, {}".format(out_left, out_right)
         return (
             "instr 2",
-            "asig0, asig1, asig2 diskin2 p4, 1, 0, 0, 6, 4",
+            "asig0, asig1, asig2 diskin2 p4, 1",
+            "gaSendL  =        gaSendL + (asig0 + (0.5 * asig1))/3",
+            "gaSendR  =        gaSendR + (asig2 + (0.5 * asig1))/3",
             outs,
             "endin",
         )
 
     @property
     def orc(self) -> str:
-        lines = ["0dbfs=1", "nchnls=2\n"]
+        lines = [
+            "0dbfs=1",
+            "gaSendL, gaSendR init 0",
+            "nchnls=2\n",
+            "instr 100",
+            "aRvbL,aRvbR reverbsc gaSendL,gaSendR,0.995,7000",
+            "outs     aRvbL * 1.25, aRvbR * 1.25",
+            "clear    gaSendL,gaSendR",
+            "endin\n",
+        ]
         lines.extend(self._mk_basic_instrument())
         lines.extend(self._mk_keyboard_instrument())
 
@@ -130,6 +145,8 @@ class _MIXVerse(synthesis.BasedCsoundEngine):
 
 
 class Verse(mus.Segment):
+    format = mus.A3
+
     def synthesize(
         self, path: str, sf_name: str, render_each_track: bool = True
     ) -> None:
@@ -232,6 +249,7 @@ class VerseMaker(mus.SegmentMaker):
         area_density_maker: infit.InfIt = infit.Gaussian(0.25, 0.075),  # a higher value
         # leads to more perforated melodic pitches.
         area_density_reference_size: fractions.Fraction = fractions.Fraction(1, 2),
+        area_min_split_size: fractions.Fraction = fractions.Fraction(1, 4),
     ) -> None:
         self.transcription = self._get_transcription(
             chapter=chapter,
@@ -246,6 +264,7 @@ class VerseMaker(mus.SegmentMaker):
             self.transcription.spread_metrical_loop,
             area_density_maker,
             area_density_reference_size,
+            area_min_split_size,
         )
         self.chapter = chapter
         self.verse = verse

@@ -9,12 +9,13 @@ The expected sample paths are
 
 import abc
 import functools
-import numpy as np
 import itertools
+import numpy as np
 import operator
 import os
-import json
 import random
+
+import json
 
 import quicktions as fractions
 
@@ -22,8 +23,9 @@ import abjad
 
 import samplyser
 
-from mu.mel import mel
 from mu.mel import ji
+from mu.mel import mel
+
 from mu.midiplug import midiplug
 from mu.sco import old
 from mu.utils import infit
@@ -31,8 +33,8 @@ from mu.utils import interpolations
 from mu.utils import tools
 
 from mutools import attachments
-from mutools import mus
 from mutools import lily
+from mutools import mus
 from mutools import synthesis
 
 from aml import areas
@@ -228,7 +230,7 @@ class SampleBasedStringSoundEngine(synthesis.BasedCsoundEngine):
                 "instr {}".format(n_glissando_points + 1),
                 pitchseg,
                 "kvol linseg 0, 0.1, 1, p3 - 0.2, 1, 0.1, 0",
-                "{} diskin2 p4, kpitch, 0, 0, 6, 4".format(", ".join(name_of_signals)),
+                "{} diskin2 p4, kpitch".format(", ".join(name_of_signals)),
                 "aSummarized = ({}) / {}".format(summarized, len(channel2use)),
                 "asig = aSummarized * kvol * p5",
                 "gaSendL  =        gaSendL + asig/3",
@@ -741,6 +743,7 @@ class SimpleStringMaker(StringMaker):
         shall_add_optional_pitches: bool = False,
         optional_pitches_min_size: fractions.Fraction = fractions.Fraction(1, 16),
         optional_pitches_avg_size: fractions.Fraction = fractions.Fraction(3, 16),
+        optional_pitches_density: float = 0.75,
         optional_pitches_maximum_octave_difference_from_melody_pitch: tuple = (1, 0),
         after_glissando_size=fractions.Fraction(1, 16),
     ) -> None:
@@ -759,6 +762,7 @@ class SimpleStringMaker(StringMaker):
         self.harmonic_pitches_max_event_size = harmonic_pitches_max_event_size
         self.optional_pitches_min_size = optional_pitches_min_size
         self.optional_pitches_avg_size = optional_pitches_avg_size
+        self.optional_pitches_density = optional_pitches_density
         self.optional_pitches_maximum_octave_difference_from_melody_pitch = (
             optional_pitches_maximum_octave_difference_from_melody_pitch
         )
@@ -1674,6 +1678,9 @@ class SimpleStringMaker(StringMaker):
                                 novent_line,
                                 segment_maker,
                                 change_novent_line=False,
+                                set_n_novents2rest=int(
+                                    self.optional_pitches_density * split2n_items
+                                ),
                             )
                         )
                         splitted = True
@@ -1711,7 +1718,7 @@ class SimpleStringMaker(StringMaker):
                             is_harmonic=bool(novent.artifical_harmonic),
                         )
 
-        return lily.NOventLine(new_novent_line)
+        return lily.NOventLine(new_novent_line).tie_pauses()
 
     def add_optional_pitches(
         self, segment_maker: mus.SegmentMaker, nset: lily.NOventSet,

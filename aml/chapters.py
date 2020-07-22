@@ -3,6 +3,8 @@ import os
 
 import PIL
 
+import abjad
+
 from mu.utils import tools
 
 from mutools import mus
@@ -17,10 +19,13 @@ class Chapter(object):
     sco_name = "notation"
     sf_name = "synthesis"
 
-    def __init__(self, name: str, *verse: versemaker.Verse):
+    make_png = False
+
+    def __init__(self, name: str, *verse: versemaker.Verse, title: str = None):
         self._chapter_path = "{}/{}".format(self._build_path, name)
         self._notation_path = "{}/{}/notation".format(self._build_path, name)
         self._name = name
+        self._title = title
         self._verses = self._sort_verses(verse)
 
         tools.igmkdir(self.path)
@@ -28,7 +33,10 @@ class Chapter(object):
 
     @classmethod
     def from_path(
-        cls, path: str = "aml/composition/al-hasyr", allowed_verses: tuple = None
+        cls,
+        path: str = "aml/composition/al-hasyr",
+        allowed_verses: tuple = None,
+        title: str = None,
     ) -> "Chapter":
         name = path.split("/")[-1]
 
@@ -50,7 +58,7 @@ class Chapter(object):
                     )
                     verses.append(importlib.import_module(relative_path, module).main())
 
-        return cls(name, *verses)
+        return cls(name, *verses, title=title)
 
     @staticmethod
     def _sort_verses(verses: tuple) -> tuple:
@@ -107,16 +115,15 @@ class Chapter(object):
                 tools.igmkdir(instrument_path)
 
                 track = getattr(verse, meta_track)
-                notation_processes.append(
-                    track.notate("{}/{}".format(instrument_path, self.sco_name))
-                )
+                if self.make_png:
+                    notation_processes.append(
+                        track.notate("{}/{}".format(instrument_path, self.sco_name))
+                    )
 
         for process in notation_processes:
             process.wait()
 
-    def _make_notation_for_each_instrument(self) -> None:
-        # TODO(implement making a notation png for each instrument using pillow)
-
+    def _make_png_notation_for_each_instrument(self) -> None:
         A2_inches = (23.4, 16.5)
         A2_pixel = tuple(int(inch * mus.STANDARD_RESOLUTION) for inch in A2_inches)
 
@@ -148,6 +155,29 @@ class Chapter(object):
                 current_height += img.height + n_pixels_in_between
 
             image.save(notation_path, resolution=mus.STANDARD_RESOLUTION)
+
+    def _make_pdf_notation_for_each_instrument(self) -> None:
+        for meta_track in globals_.ORCHESTRATION:
+            notation_path = "{}/notation/{}".format(self.path, meta_track)
+            is_first = True
+            for verse in self.verses:
+                track = getattr(verse, meta_track)
+                if is_first:
+                    lpf = track._make_lilypond_file()
+                    is_first = False
+                else:
+                    lpf.items.append(track._make_score_block())
+
+            if self._title:
+                lpf.header_block.title = abjad.Markup(self._title)
+
+            track._notate(notation_path, lpf)
+
+    def _make_notation_for_each_instrument(self) -> None:
+        if self.make_png:
+            self._make_png_notation_for_each_instrument()
+        else:
+            self._make_pdf_notation_for_each_instrument()
 
     def __call__(
         self, render_verses: bool = True, render_each_instrument: bool = True

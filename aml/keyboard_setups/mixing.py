@@ -37,4 +37,6 @@ class MixSystem(object):
                 settings.CONTROLLED_SIGNAL2KORG_NANOCONTROL_STRIP[name],
             )
             for name, mixer in name_mixer_pair.items()
+        
         )
+        # TODO(add Mute/Solo-button functionality)

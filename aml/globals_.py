@@ -43,16 +43,16 @@ AVAILABLE_VERSES = tuple(
 RESOLUTION = mus.STANDARD_RESOLUTION
 
 
-_STRING_VOLUME = 0.5
+_STRING_VOLUME = 0.55
 
 ORCHESTRATION = mus.Orchestration(
     *tuple(
         mus.MetaTrack(name, n_staves, volume, panning)
         for name, n_staves, volume, panning in (
-            ("violin", 3, _STRING_VOLUME, 0.085),
-            ("viola", 3, _STRING_VOLUME, 0.9),
-            ("cello", 3, _STRING_VOLUME, 0.7),
-            ("keyboard", 3, 3, 0.38),
+            ("violin", 3, _STRING_VOLUME, 0.185),
+            ("viola", 3, _STRING_VOLUME * 1.1, 0.8),
+            ("cello", 3, _STRING_VOLUME * 1.5, 0.65),
+            ("keyboard", 3, 2.3, 0.38),
         )
     )
 )
@@ -393,3 +393,9 @@ COMPOSITION_PATH = "aml/composition"
 
 PYO_SERVER = pyo.Server(sr=44100, audio="offline", nchnls=3)
 PYO_SERVER.boot()
+
+
+ADD_COMPROVISATION = False
+
+# paper format for score
+FORMAT = mus.A4

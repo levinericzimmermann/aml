@@ -2,8 +2,8 @@ import functools
 import itertools
 import json
 import operator
-import subprocess
 import random
+import subprocess
 
 import quicktions as fractions
 
@@ -14,22 +14,22 @@ import crosstrainer
 
 from mu.midiplug import midiplug
 
-from mu.mel import mel
 from mu.mel import ji
+from mu.mel import mel
 from mu.sco import old
 from mu.utils import infit
 from mu.utils import interpolations
 from mu.utils import tools
 
 from mutools import attachments
-from mutools import mus
 from mutools import lily
+from mutools import mus
 from mutools import synthesis
 
 from aml import complex_meters
 from aml import comprovisation
-from aml.keyboard_setups import midi as _right_hand_synth
 from aml import globals_
+from aml.keyboard_setups import midi as _right_hand_synth
 
 from aml.trackmaker import general
 
@@ -202,8 +202,8 @@ _generate_keyboard_midi_note2ji_pitch_mapping_for_gong_zone(MIDI_NOTE2JI_PITCH_P
 
 def _generate_keyboard_mapping_files():
     def gen_right_hand_mapping():
-        _right_hand_mapping_path = "{}/midi_note2freq_and_instrument_mapping.json".format(
-            KEYBOARD_SETUP_PATH
+        _right_hand_mapping_path = (
+            "{}/midi_note2freq_and_instrument_mapping.json".format(KEYBOARD_SETUP_PATH)
         )
 
         data = {
@@ -272,9 +272,9 @@ class Keyboard(general.AMLTrack):
         )
 
         for staff in abjad_data[1:]:
-            abjad.attach(
-                abjad.LilyPondLiteral("\\magnifyStaff #12/14", "before"), staff[0][0]
-            )
+            # abjad.attach(
+            #     abjad.LilyPondLiteral("\\magnifyStaff #12/14", "before"), staff[0][0]
+            # )
             abjad.attach(
                 abjad.LilyPondLiteral("\\accidentalStyle neo-modern", "before"),
                 staff[0][0],
@@ -330,7 +330,7 @@ class VeryLeftHandKeyboardEngine(synthesis.BasedCsoundEngine):
             "0dbfs=1",
             "nchnls=1\n",
             "instr 1",
-            "asig0, asig1 diskin2 p4, 1, 0, 0, 6, 4",
+            "asig0, asig1 diskin2 p4, 1",
             "out (asig0 + asig1) * 0.5",
             "endin\n",
         )
@@ -474,7 +474,8 @@ class RightHandKeyboardEngine(synthesis.PyoEngine):
                     setattr(self, generator_name, _right_hand_synth.SineGenerator(freq))
                     new_mul = self.env * next(vol_gen)
                     getattr(self, generator_name).generator.mul *= new_mul
-                    getattr(self, generator_name).out(chnl)
+                    getattr(self, generator_name).out()
+                    getattr(self, generator_name).generator.out(chnl)
 
                 self.env.play()
 
@@ -1040,8 +1041,7 @@ class KeyboardMaker(SilentKeyboardMaker):
         spread_metrical_loop: complex_meters.SpreadMetricalLoop,
         available_pitches_for_left_hand: tuple,
     ) -> tuple:
-        """Return tuple filled with subtuples of the form (position, metricity, pitches)
-        """
+        """Return tuple filled with subtuples of the form (position, metricity, pitches)"""
         rm_pairs = spread_metrical_loop.get_all_rhythm_metricitiy_pairs(*range_)[1:]
         apc_per_beat = KeyboardMaker._mlh_detect_available_pitch_classes_per_beat(
             segment_maker, spread_metrical_loop, rm_pairs
@@ -1389,7 +1389,12 @@ class KeyboardMaker(SilentKeyboardMaker):
                             )
                         else:
                             left_hand_melodic_data.append(
-                                (absolute_bar_position, [symbolic_pitch], 0.5, {})
+                                (
+                                    absolute_bar_position,
+                                    [symbolic_pitch],
+                                    0.5,
+                                    {"ottava": attachments.Ottava(-1)},
+                                )
                             )
 
         return tuple(
@@ -1420,6 +1425,9 @@ class KeyboardMaker(SilentKeyboardMaker):
             )
             for key, value in current_event[3].items():
                 setattr(novent, key, value)
+
+            if 'ottava' not in current_event[3]:
+                novent.ottava = attachments.Ottava(0)
 
             nset.append(novent)
 

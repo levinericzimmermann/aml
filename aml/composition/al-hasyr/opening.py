@@ -2,8 +2,6 @@ import itertools
 
 import quicktions as fractions
 
-import abjad
-
 from mu.mel import ji
 from mu.utils import infit
 
@@ -152,8 +150,15 @@ def main() -> versemaker.Verse:
     tweaks.rest(18, vm.violin.musdat[1])
     tweaks.change_octave(18, -1, vm.violin.musdat[1], change_main_pitches=False)
     tweaks.split_by_structure(18, 5, vm.violin.musdat[1], vm)
-    tweaks.add_glissando(23, (0, -1), vm.violin.musdat[1], verse_maker=vm)
+    # tweaks.add_glissando(23, (0, -1), vm.violin.musdat[1], verse_maker=vm)
     tweaks.add_glissando(25, (0, -2), vm.violin.musdat[1], verse_maker=vm)
+    tweaks.split_by_structure(30, 2, vm.violin.musdat[1], vm)
+    vm.violin.musdat[1][31].acciaccatura = None
+
+    # tweaks.add_artifical_harmonic(
+    #     31, vm.violin.musdat[1][31].pitch[0], vm.violin.musdat[1]
+    # )
+    # vm.violin.musdat[1][31].pitch[0] += ji.r(4, 1)
 
     ################################
     #          VIOLA               #
@@ -199,11 +204,22 @@ def main() -> versemaker.Verse:
         "pizzicato"
     )
     vm.viola.musdat[1][30].acciaccatura = None
+    vm.viola.musdat[1][32].string_contact_point = attachments.StringContactPoint("arco")
+    vm.viola.musdat[1][32].optional = None
+    vm.viola.musdat[1][32].volume = 0.7
+    vm.viola.musdat[1][32].pitch[0] -= ji.r(2, 1)
+    tweaks.prolong(32, fractions.Fraction(7, 32), vm.viola.musdat[1])
+
+    vm.viola.musdat[1][33].pitch[0] -= ji.r(2, 1)
+    vm.viola.musdat[1][33].volume = 0.7
+
+    # tweaks.add_artifical_harmonic(
+    #     33, vm.viola.musdat[1][33].pitch[0] - ji.r(2, 1), vm.viola.musdat[1]
+    # )
+    # vm.viola.musdat[1][33].pitch[0] += ji.r(2, 1)
 
     ################################
-    #          CELLO               #
-    ################################
-
+    #          CELLO               # ################################
     vm.cello.musdat[1][1].optional = None
     tweaks.prolong(1, fractions.Fraction(1, 8), vm.cello.musdat[1])
     tweaks.rest(2, vm.cello.musdat[1])
@@ -261,13 +277,30 @@ def main() -> versemaker.Verse:
                     n, -2, vm.cello.musdat[1], change_acciaccatura_pitches=False
                 )
 
-            vm.cello.musdat[1][n].acciaccatura.add_glissando = False
+                vm.cello.musdat[1][n].acciaccatura.add_glissando = False
 
     tweaks.swap_duration(28, 29, fractions.Fraction(1, 16), vm.cello.musdat[1])
     vm.cello.musdat[1][29].acciaccatura = None
     vm.cello.musdat[1][29].optional = None
-    # tweaks.rest(28, vm.cello.musdat[1])
     tweaks.rest(31, vm.cello.musdat[1])
+
+    for n in (31, 36):
+        vm.cello.musdat[1][n].choose = None
+        vm.cello.musdat[1][n].pitch = vm.cello.musdat[1][n].pitch[:1]
+
+    vm.cello.musdat[1][33].acciaccatura = None
+    vm.cello.musdat[1][34].acciaccatura = None
+    vm.cello.musdat[1][38].acciaccatura = None
+
+    tweaks.rest(34, vm.cello.musdat[1])
+    tweaks.prolong(33, fractions.Fraction(3, 16), vm.cello.musdat[1])
+    tweaks.swap_duration(32, 33, fractions.Fraction(5, 32), vm.cello.musdat[1])
+    tweaks.add_glissando(
+        32,
+        (-1, 0, 0),
+        vm.cello.musdat[1],
+        durations=(fractions.Fraction(5, 32), fractions.Fraction(5, 16)),
+    )
 
     # CS = fractions.Fraction(7, 4)
     # print(vm.cello.musdat[1].convert2absolute()[18])
@@ -291,9 +324,22 @@ def main() -> versemaker.Verse:
     vm.keyboard.musdat[2][21].arpeggio = None
     vm.keyboard.musdat[2][21].ottava = attachments.Ottava(-1)
     vm.keyboard.musdat[2][21].pitch = list(sorted(vm.keyboard.musdat[2][21].pitch)[:1])
-    # for n in (37, 36, 35, 34, 33, 32):
     for n in (35, 34, 33, 32, 28, 27):
         tweaks.rest(n, vm.keyboard.musdat[2])
+
+    tweaks.shorten(40, fractions.Fraction(1, 2), vm.keyboard.musdat[2])
+
+    ################################
+    #  changes for all instrument  #
+    ################################
+
+    for instr in ("violin", "viola", "cello", "keyboard"):
+        if instr == "keyboard":
+            nth_line = 2
+        else:
+            nth_line = 1
+
+        getattr(vm, instr)[nth_line][0].dynamic = attachments.Dynamic("pp")
 
     verse = vm()
     return verse

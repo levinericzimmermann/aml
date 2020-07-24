@@ -390,6 +390,10 @@ TIME_SIGNATURES2COMPOSITION_STRUCTURES = {
 METRICAL_PRIMES = (3, 4, 5)
 
 COMPOSITION_PATH = "aml/composition"
+BUILD_PATH = "aml/build"
+PARTBOOKS_PATH = "aml/build/partbooks"
+INTRODUCTION_PATH = "aml/build/introduction"
+INTRODUCTION_PICTURES_PATH = "aml/build/introduction/pictures"
 
 PYO_SERVER = pyo.Server(sr=44100, audio="offline", nchnls=3)
 PYO_SERVER.boot()

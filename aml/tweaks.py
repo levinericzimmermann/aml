@@ -17,6 +17,7 @@ from mu.sco import old
 from mu.utils import interpolations
 from mu.utils import tools
 
+from mutools import attachments
 from mutools import lily
 from mutools import mus
 
@@ -113,11 +114,15 @@ def swap_duration(
     swaped_size: fractions.Fraction,
     novent_line: lily.NOventLine,
 ) -> None:
-    assert novent_line[donor].delay > swaped_size
-    novent_line[donor].delay -= swaped_size
-    novent_line[donor].duration -= swaped_size
+    assert novent_line[donor].delay >= swaped_size
     novent_line[receiver].delay += swaped_size
     novent_line[receiver].duration += swaped_size
+
+    if novent_line[donor].delay == swaped_size:
+        del novent_line[donor]
+    else:
+        novent_line[donor].delay -= swaped_size
+        novent_line[donor].duration -= swaped_size
 
 
 def swap_pitch(idx0: int, idx1: int, novent_line: lily.NOventLine,) -> None:
@@ -425,3 +430,22 @@ def set_acciaccatura_pitch(
         abjad.Duration(1, 8),
     )
     novent_line[nth_event].acciaccatura.mu_pitches = [pitch]
+
+
+def add_artifical_harmonic(
+    nth_event: int, pitch: ji.JIPitch, novent_line: lily.NOventLine
+) -> None:
+    ground_pitch = lily.convert2abjad_pitch(pitch, globals_.RATIO2PITCHCLASS)
+    (
+        harmonic_pitch_class,
+        harmonic_octave_difference,
+    ) = globals_.RATIO2ARTIFICAL_HARMONIC_PITCHCLASS_AND_ARTIFICIAL_HARMONIC_OCTAVE[
+        pitch.register(0)
+    ]
+    harmonic_pitch_octave = ground_pitch.octave.number + harmonic_octave_difference
+    harmonic_pitch = abjad.NamedPitch(
+        name=harmonic_pitch_class, octave=harmonic_pitch_octave
+    )
+    novent_line[nth_event].artifical_harmonic = attachments.ArtificalHarmonicAddedPitch(
+        abjad.PitchSegment([ground_pitch, harmonic_pitch])
+    )

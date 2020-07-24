@@ -1,4 +1,5 @@
 if __name__ == "__main__":
+    '''
     from aml import chapters
     from aml import globals_
 
@@ -20,6 +21,9 @@ if __name__ == "__main__":
     # [ch(render_each_instrument=False, render_verses=True) for ch in chap]
     [ch(render_each_instrument=True, render_verses=True) for ch in chap]
 
+    '''
+
     # render introduction
+    from aml import introduction
 
     # making partbooks

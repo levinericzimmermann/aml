@@ -420,16 +420,28 @@ def change_octave(
 
 
 def set_acciaccatura_pitch(
-    nth_event: int,
-    pitch: ji.JIPitch,
-    novent_line: lily.NOventLine,
-    change_main_pitches: bool = True,
+    nth_event: int, pitch: ji.JIPitch, novent_line: lily.NOventLine,
 ) -> None:
     novent_line[nth_event].acciaccatura.abjad = abjad.Note(
         lily.convert2abjad_pitch(pitch, globals_.RATIO2PITCHCLASS),
         abjad.Duration(1, 8),
     )
     novent_line[nth_event].acciaccatura.mu_pitches = [pitch]
+
+
+def add_acciaccatura(
+    nth_event: int,
+    pitch: ji.JIPitch,
+    novent_line: lily.NOventLine,
+    add_glissando: bool = False,
+) -> None:
+    abjad_note = abjad.Note(
+        lily.convert2abjad_pitch(pitch, globals_.RATIO2PITCHCLASS),
+        abjad.Duration(1, 8),
+    )
+    novent_line[nth_event].acciaccatura = attachments.Acciaccatura(
+        [pitch], abjad_note, add_glissando
+    )
 
 
 def add_artifical_harmonic(

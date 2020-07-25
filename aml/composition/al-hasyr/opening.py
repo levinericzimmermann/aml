@@ -1,5 +1,7 @@
 import itertools
 
+import abjad
+
 import quicktions as fractions
 
 from mu.mel import ji
@@ -149,11 +151,29 @@ def main() -> versemaker.Verse:
     vm.violin.musdat[1][12].pitch = [ji.r(48, 35)]
     tweaks.rest(18, vm.violin.musdat[1])
     tweaks.change_octave(18, -1, vm.violin.musdat[1], change_main_pitches=False)
-    tweaks.split_by_structure(18, 5, vm.violin.musdat[1], vm)
-    # tweaks.add_glissando(23, (0, -1), vm.violin.musdat[1], verse_maker=vm)
-    tweaks.add_glissando(25, (0, -2), vm.violin.musdat[1], verse_maker=vm)
+    vm.violin.musdat[1][18].acciaccatura.add_glissando = True
+    tweaks.split_by_structure(18, 4, vm.violin.musdat[1], vm)
+    # making manual copies of athe acciaccatura because otherwise they will be
+    # adapted by the next call.
+    for n in (19, 20, 21):
+        acc = vm.violin.musdat[1][n].acciaccatura
+        vm.violin.musdat[1][n].acciaccatura = attachments.Acciaccatura(
+            acc.mu_pitches, abjad.mutate(acc.abjad).copy(), add_glissando=False
+        )
+    tweaks.set_acciaccatura_pitch(
+        18, vm.violin.musdat[1][0].pitch[0].copy(), vm.violin.musdat[1]
+    )
+    vm.violin.musdat[1][20].acciaccatura = None
+    tweaks.add_acciaccatura(
+        25,
+        vm.violin.musdat[1][0].pitch[0].copy(),
+        vm.violin.musdat[1],
+        add_glissando=True,
+    )
     tweaks.split_by_structure(30, 2, vm.violin.musdat[1], vm)
     vm.violin.musdat[1][31].acciaccatura = None
+    tweaks.add_glissando(36, (0, 0, -1), vm.violin.musdat[1], verse_maker=vm)
+    vm.violin.musdat[1][38].acciaccatura = None
 
     # tweaks.add_artifical_harmonic(
     #     31, vm.violin.musdat[1][31].pitch[0], vm.violin.musdat[1]
@@ -200,6 +220,7 @@ def main() -> versemaker.Verse:
     # tweaks.add_glissando(23, (0, -2), vm.viola.musdat[1], verse_maker=vm)
     tweaks.rest(23, vm.viola.musdat[1])
     vm.viola.musdat[1][25].acciaccatura = None
+    vm.viola.musdat[1][25].optional = None
     vm.viola.musdat[1][25].string_contact_point = attachments.StringContactPoint(
         "pizzicato"
     )
@@ -212,6 +233,16 @@ def main() -> versemaker.Verse:
 
     vm.viola.musdat[1][33].pitch[0] -= ji.r(2, 1)
     vm.viola.musdat[1][33].volume = 0.7
+    tweaks.add_acciaccatura(
+        35,
+        globals_.SCALE_PER_INSTRUMENT["viola"][0].register(-1),
+        vm.viola.musdat[1],
+        add_glissando=True,
+    )
+    vm.viola.musdat[1][38].glissando = None
+    vm.viola.musdat[1][39].acciaccatura = None
+    tweaks.split_by_structure(39, 3, vm.viola.musdat[1], verse_maker=vm)
+    tweaks.rest(41, vm.viola.musdat[1])
 
     # tweaks.add_artifical_harmonic(
     #     33, vm.viola.musdat[1][33].pitch[0] - ji.r(2, 1), vm.viola.musdat[1]
@@ -219,13 +250,15 @@ def main() -> versemaker.Verse:
     # vm.viola.musdat[1][33].pitch[0] += ji.r(2, 1)
 
     ################################
-    #          CELLO               # ################################
+    #          CELLO               #
+    ################################
     vm.cello.musdat[1][1].optional = None
     tweaks.prolong(1, fractions.Fraction(1, 8), vm.cello.musdat[1])
     tweaks.rest(2, vm.cello.musdat[1])
     vm.cello.musdat[1][3].acciaccatura = None
     vm.cello.musdat[1][3].optional = None
     vm.cello.musdat[1][3].pitch[0] += ji.r(2, 1)
+    vm.cello.musdat[1][3].natural_harmonic = attachments.NaturalHarmonic()
     tweaks.rest(5, vm.cello.musdat[1])
 
     tweaks.prolong(5, fractions.Fraction(1, 8), vm.cello.musdat[1])
@@ -267,16 +300,16 @@ def main() -> versemaker.Verse:
         )
         if vm.cello.musdat[1][n].acciaccatura:
             if n == 26:
-                # tweaks.change_octave(
-                #     n, -1, vm.cello.musdat[1], change_main_pitches=False
-                # )
                 vm.cello.musdat[1][n].acciaccatura = None
+            elif n == 25:
+                vm.cello.musdat[1][n].acciaccatura = None
+                vm.cello.musdat[1][n].natural_harmonic = attachments.NaturalHarmonic()
+                tweaks.change_octave(n, -1, vm.cello.musdat[1])
             else:
                 tweaks.set_acciaccatura_pitch(n, acc_pitch, vm.cello.musdat[1])
                 tweaks.change_octave(
                     n, -2, vm.cello.musdat[1], change_acciaccatura_pitches=False
                 )
-
                 vm.cello.musdat[1][n].acciaccatura.add_glissando = False
 
     tweaks.swap_duration(28, 29, fractions.Fraction(1, 16), vm.cello.musdat[1])
@@ -302,6 +335,26 @@ def main() -> versemaker.Verse:
         durations=(fractions.Fraction(5, 32), fractions.Fraction(5, 16)),
     )
 
+    tweaks.swap_duration(19, 18, fractions.Fraction(3, 16), vm.cello.musdat[1])
+    vm.cello.musdat[1][18].acciaccatura = None
+    vm.cello.musdat[1][18].natural_harmonic = attachments.NaturalHarmonic()
+    vm.cello.musdat[1][18].string_contact_point = attachments.StringContactPoint("arco")
+    vm.cello.musdat[1][18].pitch[0] += ji.r(2, 1)
+    vm.cello.musdat[1][18].acciaccatura = None
+
+    vm.cello.musdat[1][38].volume = 0.67
+    tweaks.change_octave(38, 1, vm.cello.musdat[1], change_acciaccatura_pitches=False)
+    tweaks.change_octave(39, 1, vm.cello.musdat[1], change_acciaccatura_pitches=False)
+    vm.cello.musdat[1][38].optional = None  # TODO(really?)
+    vm.cello.musdat[1][38].acciaccatura = None
+    vm.cello.musdat[1][39].optional = None  # TODO(really?)
+    vm.cello.musdat[1][39].acciaccatura = None
+    vm.cello.musdat[1][39].volume = 0.7
+    vm.cello.musdat[1][39].natural_harmonic = attachments.NaturalHarmonic()
+    tweaks.prolong(39, fractions.Fraction(9, 32), vm.cello.musdat[1])
+
+    tweaks.rest(40, vm.cello.musdat[1])
+
     # CS = fractions.Fraction(7, 4)
     # print(vm.cello.musdat[1].convert2absolute()[18])
     # ev = vm.cello.musdat[1].convert2absolute()[18]
@@ -324,10 +377,10 @@ def main() -> versemaker.Verse:
     vm.keyboard.musdat[2][21].arpeggio = None
     vm.keyboard.musdat[2][21].ottava = attachments.Ottava(-1)
     vm.keyboard.musdat[2][21].pitch = list(sorted(vm.keyboard.musdat[2][21].pitch)[:1])
-    for n in (35, 34, 33, 32, 28, 27):
+    for n in (37, 36, 35, 34, 33, 32, 28, 27):
         tweaks.rest(n, vm.keyboard.musdat[2])
 
-    tweaks.shorten(40, fractions.Fraction(1, 2), vm.keyboard.musdat[2])
+    tweaks.shorten(38, fractions.Fraction(1, 2), vm.keyboard.musdat[2])
 
     ################################
     #  changes for all instrument  #

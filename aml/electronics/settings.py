@@ -19,6 +19,23 @@ PHYSICAL_OUTPUT2CHANNEL_MAPPING = {
     "pianoteq": 7,
 }
 
+PHYSICAL_OUTPUT2STEREO_PANNING = {
+    # radios or other loudspeakers with a strong filter
+    "radio_ll": 0,
+    "radio_lr": 0.3333,
+    "radio_rl": 0.6666,
+    "radio_rr": 1,
+    # transducers that have been attached on the instruments
+    "violin": 0,
+    "viola": 1,
+    "cello": 0.7,
+    # usual keyboard amplifier
+    "pianoteq": 0.4,
+}
+PHYSICAL_OUTPUT2STEREO_PANNING = {
+    name: (PHYSICAL_OUTPUT2CHANNEL_MAPPING[name], PHYSICAL_OUTPUT2STEREO_PANNING[name])
+    for name in PHYSICAL_OUTPUT2STEREO_PANNING
+}
 
 INPUT2INSTRUMENT_MAPPING = {
     # dpa microphones

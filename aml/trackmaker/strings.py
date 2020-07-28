@@ -52,6 +52,7 @@ from aml.trackmaker import general
 
 
 class String(general.AMLTrack):
+    base_shortest_duration = fractions.Fraction(1, 8)
     _orientation_staff_size = -4
 
     def __init__(

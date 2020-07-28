@@ -52,7 +52,7 @@ ORCHESTRATION = mus.Orchestration(
             ("violin", 3, _STRING_VOLUME, 0.185),
             ("viola", 3, _STRING_VOLUME * 1.1, 0.8),
             ("cello", 3, _STRING_VOLUME * 1.5, 0.65),
-            ("keyboard", 3, 2.3, 0.38),
+            ("keyboard", 3, 2.5, 0.38),
         )
     )
 )
@@ -81,20 +81,24 @@ RATIO2PITCHCLASS = {
             "csts",  # instead of "dftf" for avoiding bb when playing artifical harmonic
             "dqf",
             "dxs",  # instead of "efxf",
-            "etrf",
-            "estf",
+            "drs",  # instead of "etrf",
+            # "dfts",  # instead of "estf",
+            "estf",  # undo
             "f",
             "fxs",
             "fqs",
             "gqf",
             "gxf",
             "g",
-            "atrf",
-            "astf",
+            # "grs",  # instead of "atrf",
+            "atrf",  # undo
+            "gfts",  # instead of "astf",
             "aftf",
             "axs",  # instead of "bfxf"
-            "ars",  # instead of "btrf" for avoiding bb when writing artifical harmonic
-            "bf",
+            # "ars",  # instead of "btrf" for avoiding bb when writing artifical harmonic
+            "btrf",
+            # "as",  # instead of "bf",
+            "bf",  # undo
         ),
     )
 }
@@ -126,27 +130,32 @@ RATIO2ARTIFICAL_HARMONIC_PITCHCLASS_AND_ARTIFICIAL_HARMONIC_OCTAVE = {
     for ratio, pitch in zip(
         functools.reduce(operator.add, INTONATIONS_PER_SCALE_DEGREE),
         (
-            ("fxf", 0),
+            ("fxf", 1),
             ("af", -1),
             ("fxs", 0),
             ("gstf", 0),
             ("ats", -1),  # instead of ("betf", -1) for avoiding bb
             ("gqf", 0),
             ("gxs", 0),  # instead of ("afxf", 0),
-            ("ctrf", 0),
-            ("astf", 0),
+            ("bxf", -1),  # insteaf of ("ctrf", 0),
+            # ("gfts", 0),  # instead of ("astf", 0),
+            ("astf", 0),  # undo
             ("bf", 0),
             ("drf", 0),
             ("bqf", 0),
             ("cqf", 1),
             ("etrf", 0),
             ("c", 1),
-            ("dtrf", 1),
-            ("fstf", 0),
+            # ("crs", 1),  # instead of ("dtrf", 1),
+            ("dtrf", 1),  # undo
+            ("etf", 0),  # instead of ("fstf", 0),
             ("dftf", 1),
             ("fxs", 0),  # instead of ("gfxf", 0)
-            ("dxf", 1),  # instead of ("esxf", 1) for avoiding bb
-            ("eff", 1),
+            # ("drs", 1),  # instead of ("etrf", 1)
+            ("etrf", 1),  # undo
+            # ("ds", 1),  # instead of ("ef", 1),
+            ("ef", 1),  # undo
+
         ),
     )
 }

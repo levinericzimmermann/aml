@@ -11,10 +11,10 @@ class Modulator(object):
     _no_pitch_bending = 8192
 
     def __init__(
-        self, trigger: pyo.Trig, server: pyo.Server, max_pitch_bend_size: int = 350
+        self, trigger: pyo.Trig, server: pyo.Server, max_pitch_bend_size: int = 250
     ):
         def pitch_bend_trigger():
-            gliss_duration = random.randint(70, 300)  # in miliseconds
+            gliss_duration = random.randint(24, 190)  # in miliseconds
             gliss_size = random.randint(
                 self._no_pitch_bending - max_pitch_bend_size,
                 self._no_pitch_bending + max_pitch_bend_size,
@@ -68,12 +68,16 @@ class Modulator(object):
             pitch_bend_trigger()
             make_ctl_trigger("blooming_energy", 10, 60, 50, 100, 41)
             make_ctl_trigger("blooming_inerita", 30, 100, 5, 10, 42)
-            make_pedal_trigger("rattle_pedal", 0.3, 57)
-            make_pedal_trigger("buff_stop_pedal", 0.3, 58)
-            make_pedal_trigger("mozart_rail", 0.3, 67)
+            make_ctl_trigger("impedance", 60, 115, 3, 5, 23)
+            make_ctl_trigger("cut_off", 30, 65, 3, 5, 24)
+            make_pedal_trigger("rattle_pedal", 0.6, 57)
+            make_pedal_trigger("buff_stop_pedal", 0.1, 58)
+            make_pedal_trigger("mozart_rail", 0.1, 67)
 
         self.blooming_energy = 10
         self.blooming_inerita = 30
+        self.impedance = 60
+        self.cut_off = 60
         self.rattle_pedal = 0
         self.buff_stop_pedal = 0
         self.mozart_rail = 0
@@ -83,6 +87,9 @@ class Modulator(object):
 
         # turning off sustain pedal
         self.server.ctlout(53, 127, channel=0, timestamp=0)
+
+        # setting high string length
+        self.server.ctlout(26, 105, channel=0, timestamp=0)
 
         self.modulator = pyo.TrigFunc(self.trigger, modulator)
 

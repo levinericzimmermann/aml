@@ -120,6 +120,10 @@ class Chapter(object):
                         track.notate("{}/{}".format(instrument_path, self.sco_name))
                     )
 
+                if meta_track == 'keyboard':
+                    # for the purpose of simulation live electronics
+                    track.make_midi_file("{}/keyboard_simulation".format(instrument_path))
+
         for process in notation_processes:
             process.wait()
 

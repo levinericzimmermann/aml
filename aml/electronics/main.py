@@ -1,46 +1,58 @@
 if __name__ == "__main__":
     import argparse
     import logging
+    import subprocess
+    import time
+
+    import mido
 
     import pyo
 
     import midi
     import mixing
+    import pianoteq
     import settings
     import strings
-    import pianoteq
 
     # adding possibility for testing the program with stereo mode and with stings
     # simulation.
     PARSER = argparse.ArgumentParser()
     PARSER.add_argument("--simulation", type=bool, default=False)
-    PARSER.add_argument("--stereo", type=bool, default=False)
-    PARSER.add_argument("--logging", type=bool, default=False)
+    PARSER.add_argument("--channels", type=str, default="multichannel")
+    PARSER.add_argument("--logging", type=bool, default=True)
     PARSED_ARGS = PARSER.parse_args()
     USE_SIMULATION = PARSED_ARGS.simulation
-    USE_STEREO = PARSED_ARGS.stereo
-    # SHOW_LOGGING = PARSED_ARGS.logging
-    SHOW_LOGGING = True
+    CHANNELS = PARSED_ARGS.channels
+    SHOW_LOGGING = PARSED_ARGS.logging
+
+    # start performance mode
+    subprocess.run("performance_on.sh", shell=True)
+
+    # start jack
+    subprocess.run("qjackctl -a patchbay-new.xml -s &", shell=True)
+    time.sleep(0.5)
+
+    # start pianoteq
+    PIANOTEQ_PROCESS = subprocess.Popen(
+        [
+            "pianoteq",
+            "--preset",
+            'Concert Harp Daily',
+            "--fxp",
+            "aml.fxp",
+            "--midimapping",
+            "complete",
+            "--multicore",
+            "max",
+        ]
+    )
+    time.sleep(2)
 
     if SHOW_LOGGING:
         logging.basicConfig(level=logging.INFO)
 
-    if USE_STEREO:
-        settings.PHYSICAL_OUTPUT2CHANNEL_MAPPING = {
-            "radio_ll": 0,
-            "radio_lr": 1,
-            "radio_rl": 0,
-            "radio_rr": 1,
-            "violin": 0,
-            "viola": 1,
-            "cello": 0,
-            "pianoteq": 1,
-        }
-
     SERVER = pyo.Server(
-        audio="jack",
-        midi="jack",
-        nchnls=len(settings.PHYSICAL_OUTPUT2CHANNEL_MAPPING),
+        audio="jack", midi="jack", nchnls=len(settings.PHYSICAL_OUTPUT2CHANNEL_MAPPING),
     )
 
     # listening / sending to all midi output devices
@@ -57,10 +69,11 @@ if __name__ == "__main__":
     logging.info("getting inputs")
     if USE_SIMULATION:
         INPUTS = {
-            instrument: pyo.SfPlayer(path).play()
+            instrument: pyo.SfPlayer(path, mul=0.7).play()
             for instrument, path in settings.INPUT2SIMULATION_PATH_MAPPING.items()
         }
         INPUTS.update({"pianoteq": pyo.Input(3)})
+
     else:
         INPUTS = {
             instrument: pyo.Input(channel).play()
@@ -76,7 +89,7 @@ if __name__ == "__main__":
     )
 
     logging.info("generating midi synthesizer for keyboard player")
-    MIDI_SYNTH = midi.MidiSynth()
+    MIDI_SYNTH = midi.MidiSynth(SERVER)
     MIDI_SYNTH.notes.keyboard()
 
     logging.info("making string - input analysis objects")
@@ -148,18 +161,30 @@ if __name__ == "__main__":
     logging.info("making pianoteq modulation object")
     PTEQ_MODULATOR = pianoteq.Modulator(MIDI_SYNTH.pianoteq_trigger, SERVER)
 
-    # adding pianoteq volume controler gui
-    # INPUTS["pianoteq"].ctrl([pyo.SLMapMul()], title="pianoteq")
-
     logging.info("sending everything from the mixer to physical outputs")
-    [MIXER[i][0].out(i) for i in settings.PHYSICAL_OUTPUT2CHANNEL_MAPPING.values()]
+    if CHANNELS == "multichannel":
+        [MIXER[i][0].out(i) for i in settings.PHYSICAL_OUTPUT2CHANNEL_MAPPING.values()]
+
+    elif CHANNELS == "stereo":
+        [MIXER[i][0].play() for i in settings.PHYSICAL_OUTPUT2CHANNEL_MAPPING.values()]
+        PANNER = [
+            pyo.Pan(MIXER[data[0]][0], outs=2, pan=data[1]).out()
+            for data in settings.PHYSICAL_OUTPUT2STEREO_PANNING.values()
+        ]
+
+    elif CHANNELS == "mono":
+        [MIXER[i][0].out(0) for i in settings.PHYSICAL_OUTPUT2CHANNEL_MAPPING.values()]
+
+    else:
+        msg = "Unknown channels option {}.".format(CHANNELS)
+        raise NotImplementedError(msg)
 
     MIXSYSTEM = mixing.MixSystem(
-        master_out=MIXER,
-        strings=STRING_PROCESSER.strings_mixer,
-        gong=MIDI_SYNTH.gong_mixer,
-        pianoteq=INPUTS["pianoteq"],
-        transducer=MIDI_SYNTH.sine_mixer,
+        master_out=(MIXER, 0, 1),
+        strings=(STRING_PROCESSER.strings_mixer, 0, 1),
+        gong=(MIDI_SYNTH.gong_mixer, 0, 2),
+        pianoteq=(INPUTS["pianoteq"], 0, 6),
+        transducer=(MIDI_SYNTH.sine_mixer, 0, 0.35),
     )
 
     if SHOW_LOGGING:
@@ -175,4 +200,14 @@ if __name__ == "__main__":
 
     logging.info("starting gui")
     SERVER.start()
-    SERVER.gui(locals(), title="aml", exit=True)
+
+    if USE_SIMULATION:
+        for message in mido.MidiFile(
+            "{}/keyboard_simulation.midi".format(settings.SIMULATION_PATH)
+        ).play():
+            SERVER.addMidiEvent(*message.bytes())
+
+    SERVER.gui(locals(), title="aml", exit=False)
+
+    PIANOTEQ_PROCESS.terminate()
+    subprocess.run("performance_off.sh", shell=True)

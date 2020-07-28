@@ -1,9 +1,9 @@
 """This module handles the sound synthesis of the midi keyboard."""
 
 import abc
+import itertools
 import json
 import logging
-import itertools
 import random
 import time
 
@@ -14,7 +14,7 @@ from mu.utils import tools
 try:
     import settings
 except ImportError:
-    from aml.keyboard_setups import settings
+    from aml.electronics import settings
 
 
 try:
@@ -23,9 +23,7 @@ try:
             int(key): (float(item[0]), item[1]) for key, item in json.load(f).items()
         }
 except FileNotFoundError:
-    with open(
-        "aml/keyboard_setups/midi_note2freq_and_instrument_mapping.json", "r"
-    ) as f:
+    with open("aml/electronics/midi_note2freq_and_instrument_mapping.json", "r") as f:
         MIDI_NOTE2FREQ_AND_INSTRUMENT_MAPPING = {
             int(key): (float(item[0]), item[1]) for key, item in json.load(f).items()
         }
@@ -46,6 +44,9 @@ class Generator(abc.ABC):
 
 
 class SineGenerator(Generator):
+    min_vol = 0.1
+    max_vol = 0.97
+
     def __init__(self, freq: float):
         self.fader = pyo.Fader(fadein=0.5, fadeout=0.5)
         self.lfoo0 = pyo.LFO(freq=0.01, mul=1, type=3)
@@ -56,16 +57,23 @@ class SineGenerator(Generator):
         )
         # self.generator.stop()
         self.stop(fadeout=False)
+        self._mul = self.max_vol
+        self._mul_setter = pyo.Trig()
 
     @property
     def mul(self) -> float:
-        return self.fader.mul
+        return self._mul
 
     @mul.setter
     def mul(self, value: float):
-        self.fader.mul = value
+        self._mul = tools.scale((0, 1, value), self.min_vol, self.max_vol)[-1]
 
-    def out(self, chnl: int = 0, dur: float = 0, delay: float = 0):
+    def out(self, dur: float = 0, delay: float = 0):
+        def set_fader_mul():
+            self.fader.mul = self.mul
+
+        self._mul_trig_func = pyo.TrigFunc(self._mul_setter, set_fader_mul)
+
         # randomize parameters for a more lively sound
         fadein_time = random.uniform(0.35, 1.5)
         self.lfoo0.freq = random.uniform(0.01, 0.6)
@@ -75,6 +83,8 @@ class SineGenerator(Generator):
         self.lfo.mul = random.uniform(0.5, 1)
 
         self.fader.setFadein(fadein_time)
+
+        self._mul_setter.play(delay=delay)
 
         # start all lfo and fader
         self.fader.play(dur=dur, delay=delay)
@@ -87,7 +97,7 @@ class SineGenerator(Generator):
 
     def stop(self, wait: float = 0, fadeout: bool = True):
         if fadeout:
-            fadeout_time = random.uniform(0.5, 1.2)
+            fadeout_time = random.uniform(0.5, 0.9)
             self.fader.setFadeout(fadeout_time)
             self.fader.stop(wait=wait)
 
@@ -104,43 +114,61 @@ class SineGenerator(Generator):
         self.generator.stop(wait=waiting_time)
 
 
-class GongGenerator(Generator):
-    _fadeout_time = 0.01
+class MonophonGongGenerator(Generator):
+    _fadeout_time = 0.03
+    min_vol = 0.15
+    max_vol = 1
 
-    def __init__(self, path: str, mixer_idx_left: int, mixer_idx_right: int) -> None:
+    def __init__(self, mixer_idx_left: int, mixer_idx_right: int) -> None:
         self.mixer_idx_left = mixer_idx_left
         self.mixer_idx_right = mixer_idx_right
-        self.fader = pyo.Fader(fadein=0.02, fadeout=self._fadeout_time)
-        self.table_left = pyo.SndTable(path, chnl=0)
-        self.table_right = pyo.SndTable(path, chnl=1)
-        self.freq = self.table_left.getRate()
-        self.generator_left = pyo.TableRead(
-            table=self.table_left, freq=self.freq, mul=self.fader
-        )
-        self.generator_right = pyo.TableRead(
-            table=self.table_right, freq=self.freq, mul=self.fader
-        )
+        self.fader = pyo.Fader(fadein=0.005, fadeout=self._fadeout_time)
+        dummy_table = pyo.SquareTable(order=1)
+        self.generator_left = pyo.TableRead(table=dummy_table, mul=self.fader)
+        self.generator_right = pyo.TableRead(table=dummy_table, mul=self.fader)
+        self._midi_note_to_tables = {}
+        self.trigger0 = pyo.Trig()
+        self.trigger1 = pyo.Trig()
+        self._mul = self.max_vol
 
     @property
     def mul(self) -> float:
-        return self.fader.mul
+        return self._mul
 
     @mul.setter
     def mul(self, value: float):
-        self.fader.mul = value
+        self._mul = tools.scale((0, 1, value), self.min_vol, self.max_vol)[-1]
 
-    def out(self, chnl: int = 0, dur: float = 0, delay: float = 0):
-        # start fader
-        self.fader.play(dur=dur, delay=delay)
+    def add_midi_note_to_sample_path(self, midi_note: int, sample_path: str) -> None:
+        table_left = pyo.SndTable(sample_path, chnl=0)
+        table_right = pyo.SndTable(sample_path, chnl=1)
+        self._midi_note_to_tables.update({midi_note: (table_left, table_right)})
 
-        # return & start actual generator
-        self.generator_left.play(dur=dur, delay=delay)
-        return self.generator_right.play(dur=dur, delay=delay)
+    def out(self, midi_note: int, dur: float = 0, delay: float = 0):
+        def kill_generator():
+            self.generator_left.stop()
+            self.generator_right.stop()
+
+        def set_generator():
+            table_left, table_right = self._midi_note_to_tables[midi_note]
+            self.generator_left.setTable(table_left)
+            self.generator_right.setTable(table_right)
+            self.generator_left.setFreq(table_left.getRate())
+            self.generator_right.setFreq(table_right.getRate())
+
+            self.fader.mul = float(self.mul)
+
+            self.fader.play(dur=dur, delay=0.001)
+            self.generator_left.play(dur=dur, delay=0.002)
+            self.generator_right.play(dur=dur, delay=0.002)
+
+        self.trigger_func0 = pyo.TrigFunc(self.trigger0, kill_generator)
+        self.trigger_func1 = pyo.TrigFunc(self.trigger1, set_generator)
+        self.trigger0.play(delay=delay)
+        self.trigger1.play(delay=delay + 0.0001)
 
     def stop(self):
         self.fader.stop()
-        self.generator_left.stop(wait=self._fadeout_time)
-        return self.generator_right.stop(wait=self._fadeout_time)
 
 
 class MidiSynth(object):
@@ -167,7 +195,8 @@ class MidiSynth(object):
 
     _available_sine_generators = (("sine", SineGenerator),)
 
-    def __init__(self):
+    def __init__(self, server: pyo.Server):
+        self.server = server
         self.previous_hauptstimme_instrument = set([])
         self._last_trigger_time = time.time()
         self.instrument_change_trigger = pyo.Trig()
@@ -175,7 +204,8 @@ class MidiSynth(object):
         self.pianoteq_trigger = pyo.Trig()
 
         self.sine_mixer = pyo.Mixer(outs=3, chnls=1, mul=0.3)
-        self.gong_mixer = pyo.Mixer(outs=4, chnls=1, time=0.045, mul=1)
+        self.gong_mixer = pyo.Mixer(outs=4, chnls=1, time=0.05, mul=1)
+        self.gong_mixer.mul = 1
 
         self.gong_spatialisation_cycle = self._make_gong_spatialisation_cycle()
 
@@ -194,10 +224,7 @@ class MidiSynth(object):
             [mixer[i][0].play() for i in mixer2channel_mapping.values()]
 
         self.notes = pyo.Notein(
-            poly=self._n_voices,
-            first=self._first_gong_midi_note,
-            last=self._last_midi_note,
-            channel=0,
+            poly=self._n_voices, last=self._last_midi_note, channel=0,
         )
         self.trigger_on = pyo.TrigFunc(
             self.notes["trigon"],
@@ -230,17 +257,21 @@ class MidiSynth(object):
         except KeyError:
             # than it must be the pianoteq part
             self.pianoteq_trigger.play()
+            self.server.noteout(midi_note, int(velocity * 127))
             return
 
         if velocity > 0:
             getattr(self, generator_name).mul = velocity
 
-            delay = 0
-            if isinstance(getattr(self, generator_name), GongGenerator):
+            is_gong = False
+            if isinstance(getattr(self, generator_name), MonophonGongGenerator):
                 if getattr(self, generator_name).generator_left.isPlaying():
                     getattr(self, generator_name).stop()
-                self.spatialise_gong(getattr(self, generator_name))
-                delay = 0.015
+                    delay = getattr(self, generator_name)._fadeout_time + 0.001
+                else:
+                    delay = 0
+
+                is_gong = True
 
             else:
                 # than the generator must be part of the transducer sounds
@@ -263,7 +294,11 @@ class MidiSynth(object):
                     self.instrument_change_trigger.play()
                     self._last_trigger_time = current_time
 
-            getattr(self, generator_name).out(delay=delay)
+            if is_gong:
+                self.spatialise_gong(getattr(self, generator_name), delay)
+                getattr(self, generator_name).out(delay=delay, midi_note=midi_note)
+            else:
+                getattr(self, generator_name).out()
 
     def _trigger_off_function(self, voice: int) -> None:
         midi_note = int(self.notes["pitch"].get(all=True)[voice])
@@ -271,24 +306,24 @@ class MidiSynth(object):
         try:
             generator_name = self.last_generator_per_midi_note[midi_note]
         except KeyError:
-            logging.info(
-                "No pyo generator has been specified for midi input {}".format(
-                    midi_note
-                )
-            )
+            # than it must be the pianoteq part
+            self.server.makenote(midi_note, 0, 0)
             return
 
-        if not isinstance(getattr(self, generator_name), GongGenerator):
+        if not isinstance(getattr(self, generator_name), MonophonGongGenerator):
             getattr(self, generator_name).stop()
 
-    def spatialise_gong(self, generator: GongGenerator) -> None:
-        spats = next(self.gong_spatialisation_cycle)
-        for spat, idx in zip(
-            spats, (generator.mixer_idx_left, generator.mixer_idx_right)
-        ):
-            for output_idx, amplitude in enumerate(spat):
-                self.gong_mixer.setAmp(idx, output_idx, amplitude)
-        self.gong_mixer.mul = 1
+    def spatialise_gong(self, generator: MonophonGongGenerator, delay: float) -> None:
+        def spatialise():
+            print("spat")
+            spats = next(self.gong_spatialisation_cycle)
+            for spat, idx in zip(
+                spats, (generator.mixer_idx_left, generator.mixer_idx_right)
+            ):
+                for output_idx, amplitude in enumerate(spat):
+                    self.gong_mixer.setAmp(idx, output_idx, amplitude)
+
+        self._gong_trigfun = pyo.TrigFunc(generator.trigger1, spatialise)
 
     @staticmethod
     def _make_gong_spatialisation_cycle() -> itertools.cycle:
@@ -331,24 +366,42 @@ class MidiSynth(object):
 
         return available_generator_per_midi_note
 
+    # def _assign_gong_generator_per_midi_note(self) -> dict:
+    #     available_generator_per_midi_note = {}
+    #     path = "kempul_samples/adapted"
+    #     gong_indices = 0
+    #     for midi_note in range(self._first_gong_midi_note, self._last_gong_midi_note):
+    #         nth_gong = midi_note - self._first_gong_midi_note
+    #         name = "gong{}".format(midi_note)
+    #         local_path = "{}/{}.wav".format(path, nth_gong)
+    #         gong_idx_left, gong_idx_right = gong_indices, gong_indices + 1
+    #         setattr(
+    #             self, name, GongGenerator(local_path, gong_idx_left, gong_idx_right)
+    #         )
+    #         self.gong_mixer.addInput(gong_idx_left, getattr(self, name).generator_left)
+    #         self.gong_mixer.addInput(
+    #             gong_idx_right, getattr(self, name).generator_right
+    #         )
+    #         available_generator_per_midi_note.update({midi_note: (name,)})
+    #         gong_indices += 2
+
+    #     return available_generator_per_midi_note
+
     def _assign_gong_generator_per_midi_note(self) -> dict:
         available_generator_per_midi_note = {}
         path = "kempul_samples/adapted"
-        gong_indices = 0
+        gong_idx_left, gong_idx_right = 0, 1
+        gong_generator = MonophonGongGenerator(gong_idx_left, gong_idx_right)
+        name = "monophon_gong"
+        setattr(self, name, gong_generator)
+        self.gong_mixer.addInput(gong_idx_left, getattr(self, name).generator_left)
+        self.gong_mixer.addInput(gong_idx_right, getattr(self, name).generator_right)
+
         for midi_note in range(self._first_gong_midi_note, self._last_gong_midi_note):
             nth_gong = midi_note - self._first_gong_midi_note
-            name = "gong{}".format(midi_note)
             local_path = "{}/{}.wav".format(path, nth_gong)
-            gong_idx_left, gong_idx_right = gong_indices, gong_indices + 1
-            setattr(
-                self, name, GongGenerator(local_path, gong_idx_left, gong_idx_right)
-            )
-            self.gong_mixer.addInput(gong_idx_left, getattr(self, name).generator_left)
-            self.gong_mixer.addInput(
-                gong_idx_right, getattr(self, name).generator_right
-            )
+            gong_generator.add_midi_note_to_sample_path(midi_note, local_path)
             available_generator_per_midi_note.update({midi_note: (name,)})
-            gong_indices += 2
 
         return available_generator_per_midi_note
 

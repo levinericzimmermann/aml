@@ -29,11 +29,12 @@ from mutools import synthesis
 from aml import complex_meters
 from aml import comprovisation
 from aml import globals_
-from aml.keyboard_setups import midi as _right_hand_synth
+
+from aml.electronics import midi as _right_hand_synth
 
 from aml.trackmaker import general
 
-KEYBOARD_SETUP_PATH = "aml/keyboard_setups"
+KEYBOARD_SETUP_PATH = "aml/electronics"
 
 
 LOWEST_MIDI_NOTE = 21  # starting from b, so that each zone is repeating at each new b
@@ -259,10 +260,15 @@ KEYBOARD_RATIO2ABJAD_PITCH_PER_ZONE = {
 
 
 class Keyboard(general.AMLTrack):
+    base_shortest_duration = fractions.Fraction(1, 128)
+    common_shortest_duration = fractions.Fraction(1, 64)
+    shortest_duration_space = 4.5
+
     def __init__(
         self,
         abjad_data: abjad.StaffGroup,
         sound_engine: synthesis.SoundEngine,
+        staves_for_midi_render: abjad.StaffGroup,
         title: str = None,
         resolution: int = None,
     ):
@@ -294,10 +300,36 @@ class Keyboard(general.AMLTrack):
         abjad.attach(abjad.Clef("treble^8"), abjad_data[1][0][0][0])
         abjad.attach(abjad.Clef("bass"), abjad_data[1][1][0][0])
 
+        # adapted abjad data that omits the orientation line for midi file creation
+        self._midi_abjad_data = abjad.Score(
+            [abjad.StaffGroup([abjad.mutate(d).copy() for d in staves_for_midi_render])]
+        )
+
         super().__init__(abjad_data, sound_engine, title, resolution)
 
     def synthesize(self, name: str) -> subprocess.Popen:
         self.sound_engine.render(name).wait()
+
+    def _make_midi_file_score_block(self):
+        score_block = abjad.Block("score")
+        midi_block = abjad.Block("midi")
+        score_block.items.append(abjad.LilyPondLiteral("\\unfoldRepeats \\articulate "))
+        score_block.items.append(self._midi_abjad_data)
+        score_block.items.append(midi_block)
+        return score_block
+
+    def make_midi_file(self, name: str) -> None:
+        lilypond_file = self._make_any_lilypond_file(
+            self._make_midi_file_score_block(),
+            self.write2png,
+            self.global_staff_size,
+            self.margin,
+            self.format,
+            self.lilypond_version,
+            includes=["articulate.ly"],
+        )
+        lily.write_lily_file(lilypond_file, name)
+        lily.render_lily_file(name, output_name=name)
 
 
 class VeryLeftHandKeyboardEngine(synthesis.BasedCsoundEngine):
@@ -311,7 +343,7 @@ class VeryLeftHandKeyboardEngine(synthesis.BasedCsoundEngine):
 
     cname = ".gong"
 
-    kempul_samples_path = "aml/keyboard_setups/kempul_samples"
+    kempul_samples_path = "aml/electronics/kempul_samples"
     adapted_kempul_samples_path = "{}/adapted".format(kempul_samples_path)
 
     def __init__(self, novent_line: lily.NOventLine):
@@ -377,8 +409,8 @@ class LeftHandKeyboardEngine(synthesis.PyteqEngine):
             novent_line
         )
         super().__init__(
-            # fxp="aml/keyboard_setups/saron_only_sound.fxp"
-            fxp="aml/keyboard_setups/aml_harp.fxp"
+            # fxp="aml/electronics/saron_only_sound.fxp"
+            fxp="aml/electronics/aml_harp.fxp"
             # preset='"Erard Player"'
             # preset='"Concert Harp Daily"'
         )
@@ -571,12 +603,35 @@ class KeyboardMaker(SilentKeyboardMaker):
         0
     ].normalize()
 
+    def __init__(
+        self,
+        lh_min_volume: float = 0.52,
+        lh_max_volume: float = 0.75,
+        lh_min_metricity_to_add_harmony: float = 0.7,
+        lh_min_metricity_to_add_restricted_harmony: float = 0.38,
+        lh_min_metricity_to_add_accent: float = 0.93,
+        lh_max_metricity_for_arpeggio: float = 0.94,
+        lh_prohibit_repetitions: bool = True,
+        lh_add_repetitions_avoiding_notes: bool = True,
+    ):
+        self.lh_min_volume = lh_min_volume
+        self.lh_vol_difference = lh_max_volume - lh_min_volume
+        self.lh_min_metricity_to_add_accent = lh_min_metricity_to_add_accent
+        self.lh_min_metricity_to_add_harmony = lh_min_metricity_to_add_harmony
+        self.lh_max_metricity_for_arpeggio = lh_max_metricity_for_arpeggio
+        self.lh_min_metricity_to_add_restricted_harmony = (
+            lh_min_metricity_to_add_restricted_harmony
+        )
+        self.lh_prohibit_repetitions = lh_prohibit_repetitions
+        self.lh_add_repetitions_avoiding_notes = lh_add_repetitions_avoiding_notes
+
     def __call__(self) -> Keyboard:
         # overwriting default call method to resolve complex problem of having the same
         # ratio mapped to different midi keys depending on the particular staff.
 
         # 1. make abjad data
         staves = []
+        staves_for_midi_render = abjad.StaffGroup([])
 
         left_hand_keyboard_ratio2abjad_pitch = {}
         left_hand_keyboard_ratio2abjad_pitch.update(
@@ -601,6 +656,20 @@ class KeyboardMaker(SilentKeyboardMaker):
                 lambda pitch, mapping: mapping[pitch],
             ),
         ):
+            activate_accidental_finder = False
+            if convertion_method is not None:
+                staves_for_midi_render.append(
+                    self._convert_novent_line2abjad_staff(
+                        line,
+                        self.bars,
+                        used_ratio2pitch_class_dict,
+                        self.repeated_areas,
+                        convertion_method,
+                        write_true_repetition=True,
+                    )
+                )
+                activate_accidental_finder = True
+
             staves.append(
                 self._convert_novent_line2abjad_staff(
                     line,
@@ -608,6 +677,7 @@ class KeyboardMaker(SilentKeyboardMaker):
                     used_ratio2pitch_class_dict,
                     self.repeated_areas,
                     convertion_method,
+                    activate_accidental_finder=activate_accidental_finder,
                 )
             )
 
@@ -617,7 +687,9 @@ class KeyboardMaker(SilentKeyboardMaker):
         # 2. generate sound engine
         sound_engine = self.make_sound_engine()
 
-        return self._track_class(abjad_data, sound_engine, self.title)
+        return self._track_class(
+            abjad_data, sound_engine, staves_for_midi_render, title=self.title
+        )
 
     def make_musdat(
         self, segment_maker: mus.SegmentMaker, meta_track: mus.MetaTrack
@@ -841,13 +913,16 @@ class KeyboardMaker(SilentKeyboardMaker):
             orientation_rhythm_metricity_pairs[1:],
         ):
             last_pitch = musical_data[-1][1]
-            octave_ignoring_last_pitch = last_pitch.set_val_border(2)
             absolute_position, metricity = rhythmical_data
-            filtered_available_pitches = tuple(
-                pitch
-                for pitch in available_pitches
-                if pitch.set_val_border(2) != octave_ignoring_last_pitch
-            )
+            if self.lh_prohibit_repetitions:
+                octave_ignoring_last_pitch = last_pitch.set_val_border(2)
+                filtered_available_pitches = tuple(
+                    pitch
+                    for pitch in available_pitches
+                    if pitch.set_val_border(2) != octave_ignoring_last_pitch
+                )
+            else:
+                filtered_available_pitches = tuple(available_pitches)
             if not filtered_available_pitches:
                 filtered_available_pitches = tuple(available_pitches)
 
@@ -919,7 +994,7 @@ class KeyboardMaker(SilentKeyboardMaker):
         return attachments.OptionalSomePitches(none_melodic_pitch_positions)
 
     @staticmethod
-    def make_arpeggio_depending_on_melodic_pitch(
+    def _mlh_make_arpeggio_depending_on_melodic_pitch(
         harmony: tuple, melodic_pitch: ji.JIPitch
     ) -> attachments.Arpeggio:
         sorted_harmony = sorted(harmony)
@@ -936,37 +1011,20 @@ class KeyboardMaker(SilentKeyboardMaker):
     def _mlh_detect_adapted_event_data_depending_on_metricity(
         self, melodic_pitch: ji.JIPitch, harmony: tuple, metricity: float
     ):
-        volume = 0.49
+        volume = self.lh_min_volume + (self.lh_vol_difference * metricity)
         pitches = [melodic_pitch]
         attachments_ = dict([])
 
-        if metricity > 0.94:
-            volume = 0.65
+        if metricity > self.lh_min_metricity_to_add_accent:
             attachments_.update(
                 {"articulation": attachments.ArticulationOnce("accent")}
             )
 
-        if metricity > 0.75:
-            volume = 0.62
-
+        if metricity > self.lh_min_metricity_to_add_harmony:
             if harmony:
                 pitches = list(harmony)
 
-                if metricity < 0.94 and len(pitches) > 1:
-                    attachments_.update(
-                        {
-                            "arpeggio": self.make_arpeggio_depending_on_melodic_pitch(
-                                pitches, melodic_pitch
-                            )
-                        }
-                    )
-
-        elif metricity > 0.38:
-            if metricity > 0.52:
-                volume = 0.61
-            else:
-                volume = 0.598
-
+        elif metricity > self.lh_min_metricity_to_add_restricted_harmony:
             if harmony:
                 pitches = sorted(harmony)
                 if len(pitches) == 2:
@@ -977,8 +1035,14 @@ class KeyboardMaker(SilentKeyboardMaker):
                 else:
                     attachments_.update({"choose": attachments.Choose()})
 
-        elif metricity > 0.3:
-            volume = 0.54
+        if metricity < self.lh_max_metricity_for_arpeggio and len(pitches) > 1:
+            attachments_.update(
+                {
+                    "arpeggio": self._mlh_make_arpeggio_depending_on_melodic_pitch(
+                        pitches, melodic_pitch
+                    )
+                }
+            )
 
         return pitches, volume, attachments_
 
@@ -1254,7 +1318,10 @@ class KeyboardMaker(SilentKeyboardMaker):
 
             # try to add one interpolation pitch to potentially avoid melodic pitch
             # repetition
-            elif tests_if_optional_interpolation_pitches_shall_be_added[1]:
+            elif (
+                self.lh_add_repetitions_avoiding_notes
+                and tests_if_optional_interpolation_pitches_shall_be_added[1]
+            ):
                 adapted_data_per_available_beat = []
                 for data in data_per_available_beat:
                     rhythmical_data = data[:2]
@@ -1426,7 +1493,7 @@ class KeyboardMaker(SilentKeyboardMaker):
             for key, value in current_event[3].items():
                 setattr(novent, key, value)
 
-            if 'ottava' not in current_event[3]:
+            if "ottava" not in current_event[3]:
                 novent.ottava = attachments.Ottava(0)
 
             nset.append(novent)
@@ -1551,9 +1618,12 @@ class KeyboardMaker(SilentKeyboardMaker):
             )
         )
         slice_ = segment_maker.bread.find_responsible_slices(position, position + 1)[0]
-        harmonic_field = tuple(
-            p for p in slice_.harmonic_field.keys() if p in allowed_pitches
-        )
+        if slice_.harmonic_field:
+            harmonic_field = tuple(
+                p for p in slice_.harmonic_field.keys() if p in allowed_pitches
+            )
+        else:
+            harmonic_field = tuple([])
         return tuple(sorted(harmonic_field)), slice_
 
     def _make_right_hand(self, segment_maker: mus.SegmentMaker) -> lily.NOventLine:

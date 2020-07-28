@@ -407,7 +407,7 @@ def change_octave(
 
     if novent_line[nth_event].acciaccatura and change_acciaccatura_pitches:
         novent_line[nth_event].acciaccatura.mu_pitches = tuple(
-            p - ji.r(2, 1) for p in novent_line[nth_event].acciaccatura.mu_pitches
+            p + ji.JIPitch([n_octaves]) for p in novent_line[nth_event].acciaccatura.mu_pitches
         )
         previous_abjad_note = novent_line[nth_event].acciaccatura.abjad
         novent_line[nth_event].acciaccatura.abjad = abjad.Note(

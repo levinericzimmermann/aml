@@ -36,7 +36,7 @@ class _MIXVerse(synthesis.BasedCsoundEngine):
     # print_output = True
 
     cname = ".mix_verse"
-    tail = 0.95
+    tail = 4.5
 
     def __init__(self, sf_path_meta_track_pairs: dict):
         self.sf_path_meta_track_pairs = sf_path_meta_track_pairs
@@ -197,8 +197,8 @@ class VerseMaker(mus.SegmentMaker):
             'pelog nem'
 
         - harmonic_tolerance: (0 - 1) = 0.5
-            a very high harmonic tolerance won't add any additional harmonic pitches,
-            while a very low tolerance will try to add as many additional harmonic pitches
+            a very low harmonic tolerance won't add any additional harmonic pitches,
+            while a very high tolerance will try to add as many additional harmonic pitches
             as possible.
 
         - ro_temperature: (0 - 1) = 0.7
@@ -226,8 +226,8 @@ class VerseMaker(mus.SegmentMaker):
         tempo_factor: float = 0.5,
         harmonic_field_max_n_pitches: int = 4,
         harmonic_field_minimal_harmonicity: float = 0.135,
-        harmonic_tolerance: float = 0.5,  # a very high harmonic tolerance won't add any
-        # additional harmonic pitches, while a very low tolerance will try to add as many
+        harmonic_tolerance: float = 0.5,  # a very low harmonic tolerance won't add any
+        # additional harmonic pitches, while a very high tolerance will try to add as many
         # additional harmonic pitches as possible.
         harmonic_pitches_add_artifical_harmonics: bool = True,
         harmonic_pitches_add_normal_pitches: bool = True,

@@ -1,0 +1,41 @@
+<!DOCTYPE patchbay>
+<patchbay version="0.5.0" name="patchbay-new">
+ <output-sockets>
+  <socket client="pyo" exclusive="off" name="pyo 1" type="jack-midi">
+   <plug>output</plug>
+  </socket>
+  <socket client="Pianoteq" exclusive="off" name="Pianoteq 1" type="jack-audio">
+   <plug>out_1</plug>
+   <plug>out_2</plug>
+  </socket>
+  <socket client="system" exclusive="off" name="midi1" type="jack-midi">
+   <plug>midi_capture_1</plug>
+  </socket>
+  <socket client="system" exclusive="off" name="midi2" type="jack-midi">
+   <plug>midi_capture_2</plug>
+  </socket>
+  <socket client="system" exclusive="off" name="midi3" type="jack-midi">
+   <plug>midi_capture_3</plug>
+  </socket>
+ </output-sockets>
+ <input-sockets>
+  <socket client="Pianoteq" exclusive="off" name="Pianoteq 1" type="jack-midi">
+   <plug>midi_in</plug>
+  </socket>
+  <socket client="pyo" exclusive="off" name="pyo 1" type="jack-audio">
+   <plug>input_4</plug>
+  </socket>
+  <socket client="pyo" exclusive="off" name="pyo-midi" type="jack-midi">
+   <plug>input</plug>
+  </socket>
+ </input-sockets>
+ <slots/>
+ <cables>
+  <cable input="Pianoteq 1" type="jack-midi" output="pyo 1"/>
+  <cable input="pyo 1" type="jack-audio" output="Pianoteq 1"/>
+  <cable input="pyo-midi" type="jack-midi" output="midi1"/>
+  <cable input="pyo-midi" type="jack-midi" output="midi2"/>
+  <cable input="pyo-midi" type="jack-midi" output="midi3"/>
+ </cables>
+</patchbay>
+

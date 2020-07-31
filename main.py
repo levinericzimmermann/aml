@@ -24,5 +24,6 @@ if __name__ == "__main__":
     '''
     # render introduction
     from aml import introduction
+    introduction.make_introduction()
 
     # making partbooks

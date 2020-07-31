@@ -19,17 +19,22 @@ class AMLTrack(mus.Track):
         self.title = title
         super().__init__(abjad_data, sound_engine, resolution=resolution)
 
-    def _make_score_block(self) -> abjad.LilyPondFile:
-        score_block = super()._make_score_block()
+    def _make_score_block(self, make_layout_block: bool = False) -> abjad.LilyPondFile:
+        score_block = super()._make_score_block(make_layout_block)
         local_header = abjad.Block("header")
         local_header.piece = abjad.Markup(
             abjad.MarkupCommand(
                 "center-column",
                 [
-                    abjad.MarkupCommand("fontsize", 1.5),
-                    abjad.MarkupCommand("smallCaps"),
-                    "{}".format(self.title),
                     abjad.MarkupCommand("vspace", 0),
+                    abjad.MarkupCommand(
+                        "rounded-box",
+                        [
+                            abjad.MarkupCommand("fontsize", 1.5),
+                            abjad.MarkupCommand("smallCaps"),
+                            "{}".format(self.title),
+                        ],
+                    ),
                 ],
             )
         )

@@ -55,7 +55,7 @@ class SineGenerator(Generator):
         self.generator = pyo.SineLoop(
             freq=freq, feedback=0.015 + ((1 + self.lfo) * 0.025), mul=self.fader
         )
-        # self.generator.stop()
+        self.generator.stop()
         self.stop(fadeout=False)
         self._mul = self.max_vol
         self._mul_setter = pyo.Trig()

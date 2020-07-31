@@ -20,6 +20,7 @@ class Chapter(object):
     sf_name = "synthesis"
 
     make_png = False
+    _orientation_staff_size = -4
 
     def __init__(self, name: str, *verse: versemaker.Verse, title: str = None):
         self._chapter_path = "{}/{}".format(self._build_path, name)
@@ -120,9 +121,11 @@ class Chapter(object):
                         track.notate("{}/{}".format(instrument_path, self.sco_name))
                     )
 
-                if meta_track == 'keyboard':
+                if meta_track == "keyboard":
                     # for the purpose of simulation live electronics
-                    track.make_midi_file("{}/keyboard_simulation".format(instrument_path))
+                    track.make_midi_file(
+                        "{}/keyboard_simulation".format(instrument_path)
+                    )
 
         for process in notation_processes:
             process.wait()
@@ -135,7 +138,9 @@ class Chapter(object):
         distance_width = int(distance_width * mus.STANDARD_RESOLUTION)
 
         for meta_track in globals_.ORCHESTRATION:
-            notation_path = "{}/notation/{}.pdf".format(self.path, meta_track)
+            notation_path = "{}/notation/with_orientation/{}.pdf".format(
+                self.path, meta_track
+            )
             image = PIL.Image.new("RGB", A2_pixel, "white")
             images2paste = []
             for verse in self.verses:
@@ -162,10 +167,13 @@ class Chapter(object):
 
     def _make_pdf_notation_for_each_instrument(self) -> None:
         for meta_track in globals_.ORCHESTRATION:
-            notation_path = "{}/notation/{}".format(self.path, meta_track)
+            notation_path = "{}/notation/with_orientation/{}".format(
+                self.path, meta_track
+            )
             is_first = True
             for verse in self.verses:
                 track = getattr(verse, meta_track)
+                track.indent_first = False
                 if is_first:
                     lpf = track._make_lilypond_file()
                     is_first = False
@@ -177,10 +185,143 @@ class Chapter(object):
 
             track._notate(notation_path, lpf)
 
+    @staticmethod
+    def _detach_optional_tone_tweaks(staff: abjad.Staff) -> None:
+        for bar in staff:
+            for obj in bar:
+                abjad.detach(abjad.LilyPondLiteral("\\once \\tiny"), obj)
+                if type(obj) == abjad.Chord:
+                    for note_head in obj.note_heads:
+                        if hasattr(note_head.tweaks, "font_size"):
+                            del note_head.tweaks.font_size
+
+    def _make_full_score_pdf_notation_for_each_instrument(self) -> None:
+        for paper_format in (mus.A3, mus.A4):
+            for meta_track in globals_.ORCHESTRATION:
+                notation_path = "{}/notation/full_score/{}/{}".format(
+                    self.path, paper_format.name, meta_track
+                )
+                is_first = True
+                for verse in self.verses:
+                    track = getattr(verse, meta_track)
+                    track.format = paper_format
+                    if is_first:
+                        track.indent_first = True
+                        lpf = track._make_lilypond_file(make_layout_block_global=False)
+
+                    else:
+                        track.indent_first = False
+                        lpf.items.append(
+                            track._make_score_block(make_layout_block=True)
+                        )
+
+                    last_score_block = lpf.items[-1]
+
+                    instr_staff = abjad.mutate(last_score_block.items[0][0][1]).copy()
+                    instr_obj = globals_.INSTRUMENT_NAME2OBJECT[meta_track]
+
+                    if is_first:
+                        abjad.setting(instr_staff).instrument_name = instr_obj.markup
+
+                    else:
+                        abjad.setting(
+                            instr_staff
+                        ).instrument_name = instr_obj.short_markup
+
+                    abjad.setting(
+                        instr_staff
+                    ).short_instrument_name = instr_obj.short_markup
+                    last_score_block.items[0] = abjad.Score([instr_staff])
+
+                    for other_meta_track in reversed(
+                        tuple(iter(globals_.ORCHESTRATION))
+                    ):
+                        if meta_track != other_meta_track:
+                            other_track = getattr(verse, other_meta_track)
+                            new_staff = abjad.mutate(other_track.score[0][1]).copy()
+                            if type(new_staff) == abjad.StaffGroup:
+                                for sub_staff in new_staff:
+                                    self._detach_optional_tone_tweaks(sub_staff)
+                            else:
+                                self._detach_optional_tone_tweaks(new_staff)
+
+                            instr_obj = globals_.INSTRUMENT_NAME2OBJECT[
+                                other_meta_track
+                            ]
+                            abjad.setting(
+                                new_staff
+                            ).font_size = self._orientation_staff_size
+                            magstep = abjad.Scheme(
+                                ["magstep", self._orientation_staff_size]
+                            )
+                            abjad.override(new_staff).staff_symbol.thickness = magstep
+                            abjad.override(new_staff).staff_symbol.staff_space = magstep
+
+                            if is_first:
+                                instrument_name_markup = instr_obj.name
+                            else:
+                                instrument_name_markup = instr_obj.short_name
+
+                            instrument_name_markup = (
+                                instrument_name_markup[0].capitalize()
+                                + instrument_name_markup[1:].lower()
+                            )
+
+                            if is_first:
+                                short_instrument_name_markup = instr_obj.short_name
+                                short_instrument_name_markup = (
+                                    short_instrument_name_markup[0].capitalize()
+                                    + short_instrument_name_markup[1:].lower()
+                                )
+                            else:
+                                short_instrument_name_markup = instrument_name_markup
+
+                            if other_meta_track == "keyboard":
+                                instrument_name_markup = abjad.Markup(
+                                    [
+                                        abjad.MarkupCommand(
+                                            "fontsize", self._orientation_staff_size
+                                        ),
+                                        instrument_name_markup,
+                                    ]
+                                )
+                                short_instrument_name_markup = abjad.Markup(
+                                    [
+                                        abjad.MarkupCommand(
+                                            "fontsize", self._orientation_staff_size
+                                        ),
+                                        short_instrument_name_markup,
+                                    ]
+                                )
+
+                            else:
+                                instrument_name_markup = abjad.Markup(
+                                    instrument_name_markup
+                                )
+                                short_instrument_name_markup = abjad.Markup(
+                                    short_instrument_name_markup
+                                )
+
+                            abjad.setting(
+                                new_staff
+                            ).instrument_name = instrument_name_markup
+                            abjad.setting(
+                                new_staff
+                            ).short_instrument_name = short_instrument_name_markup
+                            last_score_block.items[0].insert(0, new_staff)
+
+                    is_first = False
+
+                if self._title:
+                    lpf.header_block.title = abjad.Markup(self._title)
+
+                track._notate(notation_path, lpf)
+
     def _make_notation_for_each_instrument(self) -> None:
         if self.make_png:
             self._make_png_notation_for_each_instrument()
         else:
+            self._make_full_score_pdf_notation_for_each_instrument()
             self._make_pdf_notation_for_each_instrument()
 
     def __call__(

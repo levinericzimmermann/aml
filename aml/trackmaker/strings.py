@@ -20,6 +20,7 @@ import json
 import quicktions as fractions
 
 import abjad
+import pyo
 
 import samplyser
 
@@ -161,7 +162,7 @@ def _make_samples(sample_paths: tuple) -> tuple:
                     ][0]
 
                     try:
-                        dynamic = sample.split("_")[3]
+                        dynamic = sample.split("_")[3].split(".")[0]
                         if dynamic in ("p", "v1"):
                             dynamic = 0
                         else:
@@ -181,7 +182,7 @@ def _make_samples(sample_paths: tuple) -> tuple:
     return tuple(samples)
 
 
-class SampleBasedStringSoundEngine(synthesis.BasedCsoundEngine):
+class SampleBasedStringSoundEngine(object):
     _samples = _make_samples(
         tuple(
             "{}/{}".format(os.path.expanduser("~"), path)
@@ -194,13 +195,64 @@ class SampleBasedStringSoundEngine(synthesis.BasedCsoundEngine):
         )
     )
 
-    # remove_files = False
-    # print_output = True
-
     def __init__(self, novent_line: lily.NOventLine):
         self._novent_line = comprovisation.process_comprovisation_attachments(
             novent_line
         )
+
+    def find_samples(self, novent: lily.NOvent) -> tuple:
+        allowed_dynamic = (0,)
+
+        if novent.tremolo:
+            pt = ("trem",)
+
+        elif novent.string_contact_point == attachments.StringContactPoint("pizzicato"):
+            pt = ("pizz",)
+            allowed_dynamic = (1,)
+
+        elif novent.articulation_once == attachments.ArticulationOnce("."):
+            pt = ("spic",)
+
+        elif novent.articulation == attachments.Articulation("."):
+            pt = ("spic",)
+
+        else:
+            pt = ("arcovib", "susnv", "susvib")
+
+        # for s in self.samples:
+        #     print(s.playing_technique, s.dynamic)
+
+        allowed_samples = tuple(
+            sorted(
+                tuple(
+                    s
+                    for s in self.samples
+                    if s.playing_technique in pt and s.dynamic in allowed_dynamic
+                ),
+                key=lambda s: s.freq,
+            )
+        )
+        frequencies = tuple(float(s.freq) for s in allowed_samples)
+
+        samples = []
+        for pitch in novent.pitch:
+            f = float(pitch) * globals_.CONCERT_PITCH
+            samples.append(
+                (allowed_samples[tools.find_closest_index(f, frequencies)], f)
+            )
+
+        return tuple(samples)
+
+    @property
+    def samples(self) -> tuple:
+        return self._samples
+
+
+class SampleBasedStringSoundEngineCsound(
+    synthesis.BasedCsoundEngine, SampleBasedStringSoundEngine
+):
+    # remove_files = False
+    # print_output = True
 
     @property
     def cname(self) -> str:
@@ -319,67 +371,169 @@ class SampleBasedStringSoundEngine(synthesis.BasedCsoundEngine):
 
         return "\n".join(lines)
 
-    def find_samples(self, novent: lily.NOvent) -> tuple:
-        # dynamik wird zuerst über lautstärke des ursprungssamples festgestellt: v1 -> p,
-        # vANYTHING -> f, oder p -> p und f -> f. dann wird das passendere sample genommen
-        # und
-        # normalisiert und dann auf entsprechende lautstärke multipliziert.
 
-        # wie wird sich für ein sample entschieden?
-        #   1. nach spieltechniken sortieren (falls kein sample mit der spieltechnik gibt,
-        #   log
-        #   warning, aber benutze dann einfach alle samples
-        #   2. nach tonhöhe in der nähe sortieren. alle tonhöhen die innerhalb von 75 ct
-        #   liegen können benutzt werden
-        #   3. nach dynamik sortieren: wie viele level gibt es zur auswahl und was ist die
-        #   gegenwärtige dynamik? dann alle diejenigen samples rausfiltern, deren dynamik
-        #   am
-        #   nächsten ist (wenn nur 0 und 1 gibt: für dynamik 0.4 -> die erste lautstärke
-        #   benutzen, für dynamik 0.7 -> die zweite lautstärke benutzen)
-        #   4. davon einfach das erste nehmen
+class StringInstr(pyo.EventInstrument):
+    def __init__(self, **args):
+        super().__init__(**args)
+        print("HIHI")
 
-        allowed_dynamic = (0,)
 
-        if novent.tremolo:
-            pt = ("trem",)
-
-        elif novent.string_contact_point == attachments.StringContactPoint("pizzicato"):
-            pt = ("pizz",)
-            allowed_dynamic = (1,)
-
-        elif novent.articulation_once == attachments.ArticulationOnce("."):
-            pt = ("spic",)
-
-        elif novent.articulation == attachments.Articulation("."):
-            pt = ("spic",)
-
-        else:
-            pt = ("susvib", "arcovib")
-
-        allowed_samples = tuple(
-            sorted(
-                tuple(
-                    s
-                    for s in self.samples
-                    if s.playing_technique in pt and s.dynamic in allowed_dynamic
-                ),
-                key=lambda s: s.freq,
-            )
-        )
-        frequencies = tuple(float(s.freq) for s in allowed_samples)
-
-        samples = []
-        for pitch in novent.pitch:
-            f = float(pitch) * globals_.CONCERT_PITCH
-            samples.append(
-                (allowed_samples[tools.find_closest_index(f, frequencies)], f)
-            )
-
-        return tuple(samples)
+class SampleBasedStringSoundEnginePyo(
+    SampleBasedStringSoundEngine, synthesis.SoundEngine
+):
+    _tail = 0.01  # seconds
 
     @property
-    def samples(self) -> tuple:
-        return self._samples
+    def duration(self) -> float:
+        return float(self._novent_line.duration)
+
+    @property
+    def CONCERT_PITCH(self) -> float:
+        return globals_.CONCERT_PITCH
+
+    def render(self, name: str) -> None:
+        globals_.PYO_SERVER = pyo.Server(sr=44100, audio="offline", nchnls=1)
+        globals_.PYO_SERVER.boot()
+        globals_.PYO_SERVER.recordOptions(
+            dur=self.duration + self._tail + 1,
+            filename="{}.wav".format(name),
+            sampletype=4,
+        )
+        samples_per_attack = []
+        pitch_lines_per_attack = []
+        ornamentation_lines_per_attack = []
+        volume_per_attack = []
+        duration_per_attack = []
+
+        nth = 0
+        for novent in self._novent_line:
+            duration = float(novent.delay)
+            if novent.pitch:
+                n_glissando_point = (
+                    len(novent.glissando.pitch_line) if novent.glissando else 0
+                )
+                sample, expected_freq = self.find_samples(novent)[0]
+                volume = novent.volume
+                if not volume:
+                    volume = 1
+
+                else:
+                    volume = float(volume)
+
+                pitch_factor = expected_freq / sample.freq
+
+                if n_glissando_point == 0:
+                    pitch_line = [(0, pitch_factor), (duration, pitch_factor)]
+
+                else:
+                    time_position_per_point = tools.accumulate_from_zero(
+                        tuple(float(pi.delay) for pi in novent.glissando.pitch_line)[
+                            :-1
+                        ]
+                    )
+                    pitch_factor_per_point = tuple(
+                        (float(pi.pitch + novent.pitch[0]) * globals_.CONCERT_PITCH)
+                        / sample.freq
+                        for pi in novent.glissando.pitch_line
+                    )
+
+                    pitch_line = list(
+                        zip(time_position_per_point, pitch_factor_per_point)
+                    )
+
+                sample_path = os.path.relpath(sample.path)
+
+                if novent.ornamentation:
+                    if type(novent.ornamentation) == attachments.OrnamentationUp:
+                        factor = 1.049
+                    else:
+                        factor = 0.954
+
+                    ornamentation_line = [(0, 1)]
+
+                    perc_margin = 0.16
+                    area = duration * perc_margin
+                    area = area, duration - area
+                    distance = (area[1] - area[0]) / novent.ornamentation.n_times
+                    point_positions = tuple(
+                        area[0] + (distance * n)
+                        for n in range(novent.ornamentation.n_times)
+                    )
+
+                    for position in point_positions:
+                        ornamentation_line.append((position, 1))
+                        ornamentation_line.append((position + 0.025, factor))
+                        ornamentation_line.append((position + 0.092, factor))
+                        ornamentation_line.append((position + 0.124, 1))
+
+                    ornamentation_line.append((duration, 1))
+
+                else:
+                    ornamentation_line = [(0, 1), (duration, 1)]
+            else:
+                sample_path = None
+                pitch_line = None
+                volume = None
+                ornamentation_line = None
+
+            samples_per_attack.append(sample_path)
+            pitch_lines_per_attack.append(pitch_line)
+            ornamentation_lines_per_attack.append(ornamentation_line)
+            volume_per_attack.append(volume)
+            duration_per_attack.append(duration)
+
+        absolute_time_values = tools.accumulate_from_zero(duration_per_attack)
+        for start, dur, volume, pitch_list, ornamentation_list, sample in zip(
+            absolute_time_values,
+            duration_per_attack,
+            volume_per_attack,
+            ornamentation_lines_per_attack,
+            pitch_lines_per_attack,
+            samples_per_attack,
+        ):
+            if sample is not None:
+                vol_env_name = "vol_env{}".format(nth)
+                pitch_env_name = "pitch_env{}".format(nth)
+                ornamentation_env_name = "ornamentation_env{}".format(nth)
+                sf_name = "sf_{}".format(nth)
+
+                if "pizz" in sample.lower():
+                    dur = 10
+                    loop = False
+                else:
+                    loop = True
+
+                setattr(
+                    self, vol_env_name, pyo.Fader(fadein=0.1, fadeout=0.1, dur=dur),
+                )
+                setattr(self, pitch_env_name, pyo.Linseg(pitch_list, loop=False))
+                setattr(
+                    self,
+                    ornamentation_env_name,
+                    pyo.Linseg(ornamentation_list, loop=False),
+                )
+                setattr(
+                    self,
+                    sf_name,
+                    pyo.SfPlayer(
+                        sample,
+                        speed=getattr(self, pitch_env_name)
+                        * getattr(self, ornamentation_env_name),
+                        loop=loop,
+                        mul=getattr(self, vol_env_name) * volume * 0.7,
+                        interp=4,
+                    ),
+                )
+                getattr(self, sf_name).out(chnl=0, delay=start, dur=dur)
+                getattr(self, ornamentation_env_name).play(delay=start, dur=dur)
+                getattr(self, pitch_env_name).play(delay=start, dur=dur)
+                getattr(self, vol_env_name).play(delay=start, dur=dur)
+                nth += 1
+
+        self.freeverb = pyo.Freeverb(
+            sum([getattr(self, "sf_{}".format(i)) for i in range(nth - 1)]), size=0.7, mul=0.5
+        ).out()
+        globals_.PYO_SERVER.start()
 
 
 class PMStringSoundEngine(synthesis.BasedCsoundEngine):
@@ -520,7 +674,7 @@ class SineStringSoundEngine(synthesis.SineMelodyEngine):
 
 
 # STRING_SOUND_ENGINE = PMStringSoundEngine
-STRING_SOUND_ENGINE = SampleBasedStringSoundEngine
+STRING_SOUND_ENGINE = SampleBasedStringSoundEnginePyo
 # STRING_SOUND_ENGINE = MidiStringSoundEngine
 # STRING_SOUND_ENGINE = SineStringSoundEngine
 
@@ -585,9 +739,6 @@ class StringMaker(general.AMLTrackMaker):
         polyline[1][0].clef = attachments.Clef(
             {"cello": "bass", "viola": "alto", "violin": "treble"}[self.instrument.name]
         )
-        # polyline[1][0].margin_markup = attachments.MarginMarkup(
-        #     "{}.{}".format(segment_maker.chapter, segment_maker.verse)
-        # )
 
         for nol in polyline:
             nol[0].tempo = attachments.Tempo((1, 4), segment_maker.tempo)

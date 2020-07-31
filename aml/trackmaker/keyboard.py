@@ -262,7 +262,7 @@ KEYBOARD_RATIO2ABJAD_PITCH_PER_ZONE = {
 class Keyboard(general.AMLTrack):
     base_shortest_duration = fractions.Fraction(1, 128)
     common_shortest_duration = fractions.Fraction(1, 64)
-    shortest_duration_space = 4.5
+    shortest_duration_space = 2.5
 
     def __init__(
         self,
@@ -297,8 +297,8 @@ class Keyboard(general.AMLTrack):
         abjad.attach(
             abjad.LilyPondLiteral("\\magnifyStaff #4/7", "before"), abjad_data[0][0][0]
         )
-        abjad.attach(abjad.Clef("treble^8"), abjad_data[1][0][0][0])
-        abjad.attach(abjad.Clef("bass"), abjad_data[1][1][0][0])
+        # abjad.attach(abjad.Clef("treble^8"), abjad_data[1][0][0][0])
+        # abjad.attach(abjad.Clef("bass"), abjad_data[1][1][0][0])
 
         # adapted abjad data that omits the orientation line for midi file creation
         self._midi_abjad_data = abjad.Score(
@@ -504,9 +504,10 @@ class RightHandKeyboardEngine(synthesis.PyoEngine):
                 ):
                     generator_name = "generator{}".format(idx)
                     setattr(self, generator_name, _right_hand_synth.SineGenerator(freq))
-                    new_mul = self.env * next(vol_gen)
-                    getattr(self, generator_name).generator.mul *= new_mul
-                    getattr(self, generator_name).out()
+                    # new_mul = self.env * next(vol_gen)
+                    # getattr(self, generator_name).generator.mul *= new_mul
+                    getattr(self, generator_name).mul = next(vol_gen)
+                    getattr(self, generator_name).out(dur=self.dur)
                     getattr(self, generator_name).generator.out(chnl)
 
                 self.env.play()
@@ -514,6 +515,8 @@ class RightHandKeyboardEngine(synthesis.PyoEngine):
         return myinstr
 
     def render(self, name: str) -> None:
+        globals_.PYO_SERVER = pyo.Server(sr=44100, audio="offline", nchnls=3)
+        globals_.PYO_SERVER.boot()
         globals_.PYO_SERVER.recordOptions(
             dur=self.duration + self._tail + 1,
             filename="{}.wav".format(name),
@@ -581,6 +584,9 @@ class SilentKeyboardMaker(general.AMLTrackMaker):
         for nol in polyline:
             nol[0].tempo = attachments.Tempo((1, 4), segment_maker.tempo)
 
+        polyline[1][0].clef = attachments.Clef("treble^8")
+        polyline[2][0].clef = attachments.Clef("bass")
+
         return old.PolyLine(polyline)
 
     def make_musdat(
@@ -613,6 +619,9 @@ class KeyboardMaker(SilentKeyboardMaker):
         lh_max_metricity_for_arpeggio: float = 0.94,
         lh_prohibit_repetitions: bool = True,
         lh_add_repetitions_avoiding_notes: bool = True,
+        rh_likelihood_making_harmony: float = 0,
+        harmonies_min_difference: float = 250,
+        harmonies_max_difference: float = 1200,
     ):
         self.lh_min_volume = lh_min_volume
         self.lh_vol_difference = lh_max_volume - lh_min_volume
@@ -624,6 +633,10 @@ class KeyboardMaker(SilentKeyboardMaker):
         )
         self.lh_prohibit_repetitions = lh_prohibit_repetitions
         self.lh_add_repetitions_avoiding_notes = lh_add_repetitions_avoiding_notes
+        self.rh_likelihood_making_harmony = rh_likelihood_making_harmony
+        self._rh_make_harmony_on_first_beat = infit.Uniform(0, 1)
+        self.harmonies_min_difference = harmonies_min_difference
+        self.harmonies_max_difference = harmonies_max_difference
 
     def __call__(self) -> Keyboard:
         # overwriting default call method to resolve complex problem of having the same
@@ -668,7 +681,7 @@ class KeyboardMaker(SilentKeyboardMaker):
                         write_true_repetition=True,
                     )
                 )
-                activate_accidental_finder = True
+                activate_accidental_finder = False
 
             staves.append(
                 self._convert_novent_line2abjad_staff(
@@ -717,14 +730,14 @@ class KeyboardMaker(SilentKeyboardMaker):
 
     @staticmethod
     def _find_harmonies_within_one_octave(
-        melodic_pitch: ji.JIPitch, available_pitches: tuple, max_pitches: int = 4
+        melodic_pitch: ji.JIPitch,
+        available_pitches: tuple,
+        max_pitches: int = 4,
+        min_difference: float = 250,
+        max_difference: float = 1200,
     ) -> tuple:
-        normalized_melodic_pitch = melodic_pitch.normalize()
-
         available_pitches_within_one_octave = tuple(
-            p
-            for p in available_pitches
-            if abs(p - normalized_melodic_pitch) < ji.r(2, 1)
+            p for p in available_pitches if abs((p - melodic_pitch).cents) < 1200
         )
 
         if available_pitches_within_one_octave:
@@ -740,7 +753,7 @@ class KeyboardMaker(SilentKeyboardMaker):
                     is_valid = True
                     for p0, p1 in itertools.combinations(potential_harmony, 2):
                         diff = abs((p1 - p0).cents)
-                        if diff <= 250 or diff >= 1200:
+                        if diff <= min_difference or diff >= max_difference:
                             is_valid = False
                             break
 
@@ -755,7 +768,6 @@ class KeyboardMaker(SilentKeyboardMaker):
                     for s, h in zip(size_per_harmony, potential_harmonies)
                     if s == max_harmony_size
                 )
-                # just take the first one / don't set any particular preference
                 harmonies = tuple(potential_harmonies)
 
             else:
@@ -1017,7 +1029,7 @@ class KeyboardMaker(SilentKeyboardMaker):
 
         if metricity > self.lh_min_metricity_to_add_accent:
             attachments_.update(
-                {"articulation": attachments.ArticulationOnce("accent")}
+                {"articulation_once": attachments.ArticulationOnce("accent")}
             )
 
         if metricity > self.lh_min_metricity_to_add_harmony:
@@ -1654,7 +1666,11 @@ class KeyboardMaker(SilentKeyboardMaker):
                         pitch=[closest_pitch], delay=start, duration=stop
                     )
 
-                    if event_idx > 0:
+                    if (
+                        event_idx > 0
+                        or next(self._rh_make_harmony_on_first_beat)
+                        < self.rh_likelihood_making_harmony
+                    ):
                         # available pitches and slice
                         data = self._mrh_detect_available_pitches_on_particular_position(
                             start, segment_maker
@@ -1669,7 +1685,11 @@ class KeyboardMaker(SilentKeyboardMaker):
 
                         potential_harmonies = sorted(
                             self._find_harmonies_within_one_octave(
-                                closest_pitch, ap, max_pitches=3
+                                closest_pitch,
+                                ap,
+                                max_pitches=3,
+                                min_difference=self.harmonies_min_difference,
+                                max_difference=self.harmonies_max_difference,
                             )
                         )
 
@@ -1706,15 +1726,17 @@ class KeyboardMaker(SilentKeyboardMaker):
                         if harmony:
 
                             novent.pitch = harmony
-                            attachment = attachments.OptionalSomePitches(
-                                tuple(
-                                    idx
-                                    for idx, pitch in enumerate(harmony)
-                                    if pitch != closest_pitch
-                                    and pitch.normalize() != normalized_harmonic_pitch
-                                )
+                            optional_pitches_indices = tuple(
+                                idx
+                                for idx, pitch in enumerate(harmony)
+                                if pitch != closest_pitch
+                                and pitch.normalize() != normalized_harmonic_pitch
                             )
-                            novent.optional_some_pitches = attachment
+                            if optional_pitches_indices:
+                                attachment = attachments.OptionalSomePitches(
+                                    optional_pitches_indices
+                                )
+                                novent.optional_some_pitches = attachment
 
                     nset.append(novent)
 

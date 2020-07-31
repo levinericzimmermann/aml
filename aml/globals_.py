@@ -43,16 +43,16 @@ AVAILABLE_VERSES = tuple(
 RESOLUTION = mus.STANDARD_RESOLUTION
 
 
-_STRING_VOLUME = 0.55
+_STRING_VOLUME = 0.7
 
 ORCHESTRATION = mus.Orchestration(
     *tuple(
         mus.MetaTrack(name, n_staves, volume, panning)
         for name, n_staves, volume, panning in (
-            ("violin", 3, _STRING_VOLUME, 0.185),
-            ("viola", 3, _STRING_VOLUME * 1.1, 0.8),
-            ("cello", 3, _STRING_VOLUME * 1.5, 0.65),
-            ("keyboard", 3, 2.5, 0.38),
+            ("violin", 3, _STRING_VOLUME * 1.1, 0.185),
+            ("viola", 3, _STRING_VOLUME * 1, 0.8),
+            ("cello", 3, _STRING_VOLUME * 1.2, 0.65),
+            ("keyboard", 3, 2.6, 0.38),
         )
     )
 )
@@ -155,7 +155,6 @@ RATIO2ARTIFICAL_HARMONIC_PITCHCLASS_AND_ARTIFICIAL_HARMONIC_OCTAVE = {
             ("etrf", 1),  # undo
             # ("ds", 1),  # instead of ("ef", 1),
             ("ef", 1),  # undo
-
         ),
     )
 }
@@ -331,10 +330,12 @@ def _make_pitch2instrument_dict(scale_per_instrument: dict) -> dict:
 PITCH2SCALE_DEGREE = _make_pitch2scale_degree_dict(INTONATIONS_PER_SCALE_DEGREE)
 PITCH2INSTRUMENT = _make_pitch2instrument_dict(SCALE_PER_INSTRUMENT)
 
+
 INSTRUMENT_NAME2OBJECT = {
     "cello": abjad.Cello(),
     "violin": abjad.Violin(),
     "viola": abjad.Viola(),
+    "keyboard": abjad.Piano(name="keyboard", short_name="kbd."),
 }
 
 

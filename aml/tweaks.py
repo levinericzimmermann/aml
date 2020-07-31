@@ -407,7 +407,8 @@ def change_octave(
 
     if novent_line[nth_event].acciaccatura and change_acciaccatura_pitches:
         novent_line[nth_event].acciaccatura.mu_pitches = tuple(
-            p + ji.JIPitch([n_octaves]) for p in novent_line[nth_event].acciaccatura.mu_pitches
+            p + ji.JIPitch([n_octaves])
+            for p in novent_line[nth_event].acciaccatura.mu_pitches
         )
         previous_abjad_note = novent_line[nth_event].acciaccatura.abjad
         novent_line[nth_event].acciaccatura.abjad = abjad.Note(
@@ -429,24 +430,7 @@ def set_acciaccatura_pitch(
     novent_line[nth_event].acciaccatura.mu_pitches = [pitch]
 
 
-def add_acciaccatura(
-    nth_event: int,
-    pitch: ji.JIPitch,
-    novent_line: lily.NOventLine,
-    add_glissando: bool = False,
-) -> None:
-    abjad_note = abjad.Note(
-        lily.convert2abjad_pitch(pitch, globals_.RATIO2PITCHCLASS),
-        abjad.Duration(1, 8),
-    )
-    novent_line[nth_event].acciaccatura = attachments.Acciaccatura(
-        [pitch], abjad_note, add_glissando
-    )
-
-
-def add_artifical_harmonic(
-    nth_event: int, pitch: ji.JIPitch, novent_line: lily.NOventLine
-) -> None:
+def _get_artifical_harmonic_pitches(pitch: ji.JIPitch) -> tuple:
     ground_pitch = lily.convert2abjad_pitch(pitch, globals_.RATIO2PITCHCLASS)
     (
         harmonic_pitch_class,
@@ -458,6 +442,43 @@ def add_artifical_harmonic(
     harmonic_pitch = abjad.NamedPitch(
         name=harmonic_pitch_class, octave=harmonic_pitch_octave
     )
+    return abjad.PitchSegment(sorted([ground_pitch, harmonic_pitch]))
+
+
+def add_artifical_harmonic(
+    nth_event: int, pitch: ji.JIPitch, novent_line: lily.NOventLine
+) -> None:
     novent_line[nth_event].artifical_harmonic = attachments.ArtificalHarmonicAddedPitch(
-        abjad.PitchSegment([ground_pitch, harmonic_pitch])
+        _get_artifical_harmonic_pitches(pitch)
     )
+
+
+def add_acciaccatura(
+    nth_event: int,
+    pitch: ji.JIPitch,
+    novent_line: lily.NOventLine,
+    add_glissando: bool = False,
+    use_artifical_harmonic: bool = False,
+) -> None:
+    if use_artifical_harmonic:
+        abjad_note = abjad.Chord(
+            _get_artifical_harmonic_pitches(pitch), abjad.Duration(1, 8),
+        )
+        abjad.tweak(abjad_note.note_heads[1]).style = "harmonic"
+        pitch = pitch + ji.r(4, 1)
+
+    else:
+        abjad_note = abjad.Note(
+            lily.convert2abjad_pitch(pitch, globals_.RATIO2PITCHCLASS),
+            abjad.Duration(1, 8),
+        )
+    novent_line[nth_event].acciaccatura = attachments.Acciaccatura(
+        [pitch], abjad_note, add_glissando
+    )
+
+
+def make_solo_gong(nth_event: int, novent_line: lily.NOventLine) -> None:
+    novent_line[nth_event].arpeggio = None
+    novent_line[nth_event].ottava = attachments.Ottava(-1)
+    novent_line[nth_event].pitch = list(sorted(novent_line[nth_event].pitch)[:1])
+    novent_line[nth_event].articulation_once = None

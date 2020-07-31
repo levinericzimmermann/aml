@@ -100,6 +100,9 @@ def main() -> versemaker.Verse:
     # tweaks.shorten(2, fractions.Fraction(1, 8), vm.violin.musdat[1])
     tweaks.add_glissando(2, (0, 0, -1), vm.violin.musdat[1], verse_maker=vm)
     tweaks.swap_identity(3, 4, vm.violin.musdat[1])
+
+    vm.violin.musdat[1][2].ornamentation = attachments.OrnamentationDown(1)
+
     # tweaks.split(
     #     8,
     #     fractions.Fraction(1, 4),
@@ -134,6 +137,8 @@ def main() -> versemaker.Verse:
     tweaks.set_acciaccatura_pitch(11, ji.r(3, 2), vm.violin.musdat[1])
 
     vm.violin.musdat[1][14].tremolo = None
+    vm.violin.musdat[1][14].volume = 2
+    vm.violin.musdat[1][16].prall = attachments.Prall()
     vm.violin.musdat[1][14].string_contact_point = attachments.StringContactPoint(
         "pizzicato"
     )
@@ -164,6 +169,8 @@ def main() -> versemaker.Verse:
         18, vm.violin.musdat[1][0].pitch[0].copy(), vm.violin.musdat[1]
     )
     vm.violin.musdat[1][20].acciaccatura = None
+    vm.violin.musdat[1][20].ornamentation = attachments.OrnamentationUp(1)
+    vm.violin.musdat[1][23].ornamentation = attachments.OrnamentationDown(1)
     tweaks.add_acciaccatura(
         25,
         vm.violin.musdat[1][0].pitch[0].copy(),
@@ -193,6 +200,7 @@ def main() -> versemaker.Verse:
 
     vm.violin.musdat[1][44].pitch = [ji.r(35, 32)]
     vm.violin.musdat[1][44].volume = 0.4
+    vm.violin.musdat[1][44].ornamentation = attachments.OrnamentationUp(1)
     # tweaks.add_glissando(
     #     44,
     #     (0, 0, -1),
@@ -232,8 +240,10 @@ def main() -> versemaker.Verse:
         vm.viola.musdat[1],
         durations=(fractions.Fraction(1, 8), fractions.Fraction(1, 16)),
     )
+    vm.viola.musdat[1][10].ornamentation = attachments.OrnamentationDown(2)
     vm.viola.musdat[1][10].acciaccatura.add_glissando = True
     vm.viola.musdat[1][12].acciaccatura.add_glissando = True
+    vm.viola.musdat[1][14].prall = attachments.Prall()
 
     vm.viola.musdat[1][15].pitch = [ji.r(4, 3)]
     vm.viola.musdat[1][15].volume = 0.5
@@ -245,6 +255,7 @@ def main() -> versemaker.Verse:
 
     tweaks.split_by_structure(18, 2, vm.viola.musdat[1], vm)
     vm.viola.musdat[1][19].acciaccatura = None
+    vm.viola.musdat[1][19].ornamentation = attachments.OrnamentationUp(1)
     tweaks.add_glissando(19, (0, -1), vm.viola.musdat[1], verse_maker=vm)
 
     for n in (15, 16, 17, 18, 19, 21):
@@ -272,6 +283,7 @@ def main() -> versemaker.Verse:
         vm.viola.musdat[1],
         add_glissando=True,
     )
+    vm.viola.musdat[1][36].ornamentation = attachments.OrnamentationUp(1)
     vm.viola.musdat[1][38].glissando = None
     vm.viola.musdat[1][39].acciaccatura = None
     tweaks.split_by_structure(39, 3, vm.viola.musdat[1], verse_maker=vm)
@@ -445,10 +457,17 @@ def main() -> versemaker.Verse:
     vm.keyboard.musdat[2][21].arpeggio = None
     vm.keyboard.musdat[2][21].ottava = attachments.Ottava(-1)
     vm.keyboard.musdat[2][21].pitch = list(sorted(vm.keyboard.musdat[2][21].pitch)[:1])
-    for n in (37, 36, 35, 34, 33, 32, 28, 27):
-        tweaks.rest(n, vm.keyboard.musdat[2])
-
-    tweaks.shorten(38, fractions.Fraction(1, 2), vm.keyboard.musdat[2])
+    vm.keyboard.musdat[2][30].articulation_once = None
+    # vm.keyboard.musdat[2][31].pitch = [vm.keyboard.musdat[2][30].pitch[0].copy()]
+    tweaks.shorten(44, fractions.Fraction(3, 4), vm.keyboard.musdat[2])
+    vm.keyboard.musdat[2][44].articulation_once = None
+    tweaks.swap_duration(30, 29, fractions.Fraction(1, 8), vm.keyboard.musdat[2])
+    for n in (37, 36, 35, 34, 33, 32, 31, 28, 27):
+        if n == 31:
+            tweaks.swap_duration(31, 30, fractions.Fraction(1, 4), vm.keyboard.musdat[2])
+        else:
+            tweaks.rest(n, vm.keyboard.musdat[2])
+        # tweaks.rest(n, vm.keyboard.musdat[2])
 
     vm.keyboard.musdat[2].append(type(vm.keyboard.musdat[2][0])())
     keyboard_swap_dur_size = fractions.Fraction(3, 4)
@@ -474,12 +493,6 @@ def main() -> versemaker.Verse:
         novent_line = getattr(vm, instr).musdat[nth_line[0]]
         novent_line[0].dynamic = attachments.Dynamic("pp")
 
-        """
-        for x in nth_line:
-            novent_line = getattr(vm, instr).musdat[x]
-            novent_line[-1].fermata = attachments.Fermata()
-        """
-
     verse = vm()
 
     for instr in ("violin", "viola", "cello", "keyboard"):
@@ -500,15 +513,22 @@ def main() -> versemaker.Verse:
                 )
             else:
                 fermata = abjad.Fermata()
+
             abjad.attach(fermata, staff[-1][-1])
 
             # adapting accidental notation of keyboard
-            if instr == 'keyboard' and idx[1] == 1:
+            if instr == "keyboard" and idx[1] == 1:
                 abjad.Accidental.respell_with_sharps(staff[6][3:])
                 abjad.Accidental.respell_with_sharps(staff[7])
                 abjad.Accidental.respell_with_sharps(staff[8])
                 abjad.Accidental.respell_with_sharps(staff[18])
                 abjad.Accidental.respell_with_sharps(staff[19])
                 abjad.Accidental.respell_with_sharps(staff[20])
+
+            # lily.attach_empty_grace_note_at_beggining_of_every_bar(staff)
+
+            if instr == 'viola':
+                clef = attachments.Clef('alto')
+                clef.attach(staff[0], None)
 
     return verse

@@ -83,7 +83,7 @@ def _notate(name: str, instrument: str, scale: tuple) -> None:
         sco = abjad.Score([staff])
 
         if add_harmonics:
-            descr = "scale for {} with artifical harmonics".format(instrument)
+            descr = "scale for {} with artificial harmonics".format(instrument)
         else:
             descr = "scale for {}".format(instrument)
 
@@ -102,7 +102,7 @@ def _notate(name: str, instrument: str, scale: tuple) -> None:
         final_file_name = "{}/pictures/scale_{}".format(name, instrument)
 
         if add_harmonics:
-            final_file_name = "{}_artifical_harmonics".format(final_file_name)
+            final_file_name = "{}_artificial_harmonics".format(final_file_name)
 
         lily.make_small_example(sco, final_file_name, header_block=header_block)
 

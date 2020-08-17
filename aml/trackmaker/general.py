@@ -1,4 +1,8 @@
+import quicktions as fractions
+
 import abjad
+
+from mu.utils import tools
 
 from mutools import mus
 from mutools import synthesis
@@ -53,3 +57,17 @@ class AMLTrackMaker(mus.TrackMaker):
     @mus._not_attached_yet
     def title(self) -> str:
         return self._title
+
+    @property
+    def absolute_bar_durations(self) -> tuple:
+        return tools.accumulate_from_zero(
+            tuple(fractions.Fraction(ts.duration) for ts in self.bars)
+        )
+
+    def get_responsible_bar_index(self, start: fractions.Fraction) -> int:
+        abd = self.absolute_bar_durations
+        for bidx, bstart, bstop in zip(range(len(self.bars)), abd, abd[1:]):
+            if start >= bstart and start < bstop:
+                return bidx
+
+        raise ValueError()

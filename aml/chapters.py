@@ -7,6 +7,7 @@ import abjad
 
 from mu.utils import tools
 
+from mutools import lily
 from mutools import mus
 
 from aml import globals_
@@ -31,6 +32,10 @@ class Chapter(object):
 
         tools.igmkdir(self.path)
         tools.igmkdir(self.notation_path)
+
+    @property
+    def title(self) -> str:
+        return self._title
 
     @classmethod
     def from_path(
@@ -99,9 +104,10 @@ class Chapter(object):
     def notation_path(self) -> str:
         return self._notation_path
 
-    def _render_verses(self, render_each_track: bool = True) -> None:
+    def _render_verses(
+        self, render_each_track: bool = True, render_notation: bool = True
+    ) -> None:
         """Generate notation & sound files for each instrument in each verse."""
-
         notation_processes = []
         for verse in self.verses:
 
@@ -109,7 +115,8 @@ class Chapter(object):
             tools.igmkdir(verse_path)
 
             verse.synthesize(verse_path, self.sf_name, render_each_track)
-            verse.notate("{}/{}".format(verse_path, self.sco_name))
+            if render_notation:
+                verse.notate("{}/{}".format(verse_path, self.sco_name))
 
             for meta_track in globals_.ORCHESTRATION:
                 instrument_path = "{}/{}".format(verse_path, meta_track)
@@ -207,6 +214,7 @@ class Chapter(object):
                     track.format = paper_format
                     if is_first:
                         track.indent_first = True
+                        track.global_staff_size = 20
                         lpf = track._make_lilypond_file(make_layout_block_global=False)
 
                     else:
@@ -310,12 +318,89 @@ class Chapter(object):
                             ).short_instrument_name = short_instrument_name_markup
                             last_score_block.items[0].insert(0, new_staff)
 
+                        else:
+                            copied_staff = abjad.mutate(last_score_block.items[0][-1]).copy()
+                            del last_score_block.items[0][-1]
+                            last_score_block.items[0].insert(0, copied_staff)
+
                     is_first = False
 
                 if self._title:
                     lpf.header_block.title = abjad.Markup(self._title)
 
                 track._notate(notation_path, lpf)
+
+    @staticmethod
+    def _set_instrument_name(
+        instr_staff: abjad.Staff, instr_obj: abjad.Instrument, is_first_verse: bool
+    ) -> None:
+        if is_first_verse:
+            abjad.setting(instr_staff).instrument_name = instr_obj.markup
+        else:
+            abjad.setting(instr_staff).instrument_name = instr_obj.short_markup
+
+        abjad.setting(instr_staff).short_instrument_name = instr_obj.short_markup
+
+    def _make_full_score_pdf_notation(self) -> None:
+        for paper_format in (mus.A3, mus.A4):
+            is_first_verse = True
+            notation_path = "{}/notation/full_score/{}_{}".format(
+                self.path, self._title.replace(" ", ""), paper_format.name
+            )
+            for verse in self.verses:
+                is_first_track = True
+                for meta_track in globals_.ORCHESTRATION:
+                    track = getattr(verse, meta_track)
+                    track.format = paper_format
+                    if (is_first_verse and is_first_track) or is_first_track:
+                        if is_first_verse:
+                            track.indent_first = True
+                            track.global_staff_size = 15
+                            lpf = track._make_lilypond_file(
+                                make_layout_block_global=False
+                            )
+
+                        else:
+                            track.indent_first = False
+                            lpf.items.append(
+                                track._make_score_block(make_layout_block=True)
+                            )
+
+                        last_score_block = lpf.items[-1]
+
+                        instr_staff = abjad.mutate(
+                            last_score_block.items[0][0][1]
+                        ).copy()
+                        instr_obj = globals_.INSTRUMENT_NAME2OBJECT[meta_track]
+                        self._set_instrument_name(
+                            instr_staff, instr_obj, is_first_verse
+                        )
+                        last_score_block.items[0] = abjad.Score([instr_staff])
+
+                    else:
+                        last_score_block = lpf.items[-1]
+
+                        instr_staff = abjad.mutate(track.score[0][1]).copy()
+                        instr_obj = globals_.INSTRUMENT_NAME2OBJECT[meta_track]
+                        self._set_instrument_name(
+                            instr_staff, instr_obj, is_first_verse
+                        )
+                        last_score_block.items[0].append(instr_staff)
+
+                    is_first_track = False
+
+                is_first_verse = False
+
+            if self._title:
+                lpf.header_block.title = abjad.Markup(self._title)
+
+            lily.write_lily_file(lpf, notation_path)
+            lily.render_lily_file(
+                notation_path,
+                write2png=False,
+                resolution=None,
+                output_name=notation_path,
+            )
 
     def _make_notation_for_each_instrument(self) -> None:
         if self.make_png:
@@ -325,11 +410,18 @@ class Chapter(object):
             self._make_pdf_notation_for_each_instrument()
 
     def __call__(
-        self, render_verses: bool = True, render_each_instrument: bool = True
+        self,
+        render_verses: bool = True,
+        render_notation_of_verses: bool = False,
+        render_each_instrument: bool = True,
     ) -> None:
         """Generate png file for each instrument."""
 
+        self._make_full_score_pdf_notation()
+
         if render_verses:
-            self._render_verses(render_each_instrument)
+            self._render_verses(
+                render_each_instrument, render_notation=render_notation_of_verses
+            )
 
         self._make_notation_for_each_instrument()

@@ -11,79 +11,6 @@ from aml import globals_
 
 
 class Area(object):
-    _distribution_cycle = infit.Cycle(
-        (
-            (
-                0,
-                1,
-                0,
-                2,
-                0,
-                2,
-                0,
-                1,
-                0,
-                2,
-                0,
-                1,
-                0,
-                1,
-                0,
-                2,
-                0,
-                2,
-                0,
-                1,
-                0,
-                1,
-                0,
-                2,
-                0,
-                1,
-                0,
-                2,
-                0,
-                2,
-                0,
-                1,
-            ),
-            (
-                0,
-                2,
-                0,
-                1,
-                0,
-                1,
-                0,
-                2,
-                0,
-                1,
-                0,
-                2,
-                0,
-                2,
-                0,
-                1,
-                0,
-                1,
-                0,
-                2,
-                0,
-                2,
-                0,
-                1,
-                0,
-                2,
-                0,
-                1,
-                0,
-                1,
-                0,
-                2,
-            ),
-        )
-    )
-
     def __init__(
         self,
         increment: float,
@@ -93,7 +20,9 @@ class Area(object):
         density_reference: fractions.Fraction,
         spread_metrical_loop: complex_meters.SpreadMetricalLoop,
         min_split_size: fractions.Fraction(1, 4),
+        distribution_cycle: infit.InfIt,
     ):
+        self._distribution_cycle = distribution_cycle
         self._increment = fractions.Fraction(increment)
         self._stop = fractions.Fraction(stop)
         self._duration = self.stop - self.increment
@@ -309,6 +238,77 @@ class Area(object):
 
 
 class Areas(tuple):
+    _distribution_cycle = (
+        (
+            0,
+            1,
+            0,
+            2,
+            0,
+            2,
+            0,
+            1,
+            0,
+            2,
+            0,
+            1,
+            0,
+            1,
+            0,
+            2,
+            0,
+            2,
+            0,
+            1,
+            0,
+            1,
+            0,
+            2,
+            0,
+            1,
+            0,
+            2,
+            0,
+            2,
+            0,
+            1,
+        ),
+        (
+            0,
+            2,
+            0,
+            1,
+            0,
+            1,
+            0,
+            2,
+            0,
+            1,
+            0,
+            2,
+            0,
+            2,
+            0,
+            1,
+            0,
+            1,
+            0,
+            2,
+            0,
+            2,
+            0,
+            1,
+            0,
+            2,
+            0,
+            1,
+            0,
+            1,
+            0,
+            2,
+        ),
+    )
+
     def __repr__(self) -> str:
         return "Areas{}".format(tuple(self[:]))
 
@@ -324,6 +324,7 @@ class Areas(tuple):
         density_reference: fractions.Fraction = fractions.Fraction(2, 1),
         min_split_size: fractions.Fraction = fractions.Fraction(1, 4),
     ) -> "Areas":
+        distribution_cycle = infit.Cycle(cls._distribution_cycle)
         areas = []
         absolute_melody = melody.convert2absolute()
 
@@ -341,6 +342,7 @@ class Areas(tuple):
                         density_reference,
                         spread_metrical_loop,
                         min_split_size,
+                        distribution_cycle,
                     )
                 )
                 last_events = [(tone, absolute_tone)]
@@ -354,6 +356,7 @@ class Areas(tuple):
                 density_reference,
                 spread_metrical_loop,
                 min_split_size,
+                distribution_cycle,
             )
         )
 

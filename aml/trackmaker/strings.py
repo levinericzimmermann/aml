@@ -78,7 +78,7 @@ class String(general.AMLTrack):
             abjad.override(orientation_staff).staff_symbol.staff_space = magstep
 
         for literal in (
-            "\\accidentalStyle dodecaphonic-first",
+            "\\accidentalStyle modern-cautionary",
             "\\override StemTremolo.slope = #0.37",
             "\\override StemTremolo.beam-thickness = #0.3",
             "\\override StemTremolo.beam-width = #1.35",
@@ -86,6 +86,16 @@ class String(general.AMLTrack):
             abjad.attach(
                 abjad.LilyPondLiteral(literal, "before"), abjad_data[1][0][0],
             )
+
+        abjad.attach(
+            abjad.Markup(
+                abjad.MarkupCommand(
+                    "smaller", abjad.MarkupCommand("italic", ["con sordino, non vibrato"])
+                ),
+                direction=abjad.enums.Up,
+            ),
+            abjad_data[1][0][0],
+        )
 
         super().__init__(abjad_data, sound_engine, title, resolution)
 
@@ -119,8 +129,8 @@ class Sample(object):
         return self._playing_technique
 
     def __repr__(self) -> str:
-        return "Sample({}, {}, {})".format(
-            self._freq, self._dynamic, self._playing_technique
+        return "Sample({}, {}, {}, {})".format(
+            self._freq, self._dynamic, self._playing_technique, self.path
         )
 
 
@@ -382,6 +392,7 @@ class SampleBasedStringSoundEnginePyo(
     SampleBasedStringSoundEngine, synthesis.SoundEngine
 ):
     _tail = 0.01  # seconds
+    _vol_fac = 0.8
 
     @property
     def duration(self) -> float:
@@ -520,7 +531,7 @@ class SampleBasedStringSoundEnginePyo(
                         speed=getattr(self, pitch_env_name)
                         * getattr(self, ornamentation_env_name),
                         loop=loop,
-                        mul=getattr(self, vol_env_name) * volume * 0.7,
+                        mul=getattr(self, vol_env_name) * volume * 0.675,
                         interp=4,
                     ),
                 )
@@ -531,7 +542,9 @@ class SampleBasedStringSoundEnginePyo(
                 nth += 1
 
         self.freeverb = pyo.Freeverb(
-            sum([getattr(self, "sf_{}".format(i)) for i in range(nth - 1)]), size=0.7, mul=0.5
+            sum([getattr(self, "sf_{}".format(i)) for i in range(nth - 1)]),
+            size=0.7,
+            mul=0.5,
         ).out()
         globals_.PYO_SERVER.start()
 
@@ -906,7 +919,6 @@ class SimpleStringMaker(StringMaker):
         except AssertionError:
             msg = "'harmonic_pitches_density' has to be bigger or equal to "
             msg += "'harmonic_pitches_activity'."
-            raise ValueError(msg)
 
         self.harmonic_pitches_density = harmonic_pitches_density
         self.harmonic_pitches_activity = harmonic_pitches_activity
@@ -946,7 +958,7 @@ class SimpleStringMaker(StringMaker):
         # 1. make abjad data
         staves = []
         for line, add_time_signatures, repeated_areas in zip(
-            self.musdat,
+            self._prepare_staves(self.musdat, self._segment_maker),
             (False, True, False),
             (tuple([]), self.repeated_areas, tuple([])),
         ):
@@ -957,6 +969,7 @@ class SimpleStringMaker(StringMaker):
                     self.ratio2pitchclass_dict,
                     repeated_areas,
                     add_time_signatures=add_time_signatures,
+                    artifical_harmonic_pitches_getter=self._get_abjad_pitch_and_added_pitch_for_harmonic_pitch,
                 )
             )
 

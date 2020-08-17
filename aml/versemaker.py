@@ -37,6 +37,7 @@ class _MIXVerse(synthesis.BasedCsoundEngine):
 
     cname = ".mix_verse"
     tail = 4.5
+    _master_vol = 0.6
 
     def __init__(self, sf_path_meta_track_pairs: dict):
         self.sf_path_meta_track_pairs = sf_path_meta_track_pairs
@@ -123,22 +124,24 @@ class _MIXVerse(synthesis.BasedCsoundEngine):
                 'i1 0 {} "{}" {} {} {}'.format(
                     float(self.duration),
                     path,
-                    sf_path_meta_track_pair[1].volume,
+                    sf_path_meta_track_pair[1].volume * self._master_vol,
                     sf_path_meta_track_pair[1].volume_left,
                     sf_path_meta_track_pair[1].volume_right,
                 )
             )
 
         lines.append(
-            'i1 0 {} "{}" 0.53 1 1'.format(
+            'i1 0 {} "{}" 0.53 * {} 1 1'.format(
                 float(self.duration),
                 "{}_very_left.wav".format(self.sf_path_meta_track_pairs["keyboard"][0]),
+                self._master_vol,
             )
         )
         lines.append(
-            'i2 0 {} "{}" 0.37'.format(
+            'i2 0 {} "{}" 0.285 * {}'.format(
                 float(self.duration),
                 "{}_right.wav".format(self.sf_path_meta_track_pairs["keyboard"][0]),
+                self._master_vol,
             )
         )
         return "\n".join(lines)
@@ -246,11 +249,14 @@ class VerseMaker(mus.SegmentMaker):
         # beat to get added.
         ro_density: float = 0.5,  # a high density value increases the amount of
         # orientation beats.
-        area_density_maker: infit.InfIt = infit.Gaussian(0.25, 0.075),  # a higher value
+        area_density_maker: infit.InfIt = None,  # a higher value
         # leads to more perforated melodic pitches.
         area_density_reference_size: fractions.Fraction = fractions.Fraction(1, 2),
         area_min_split_size: fractions.Fraction = fractions.Fraction(1, 4),
     ) -> None:
+        if area_density_maker is None:
+            area_density_maker = infit.Gaussian(0.25, 0.075)
+
         self.transcription = self._get_transcription(
             chapter=chapter,
             verse=verse,
@@ -360,7 +366,7 @@ class VerseMaker(mus.SegmentMaker):
         for bar, has_double_bar_line in zip(staff, double_barlines_positions):
             if has_double_bar_line:
                 try:
-                    abjad.attach(abjad.BarLine(".", format_slot="before"), bar[0])
+                    abjad.attach(abjad.BarLine(".", format_slot="absolute_before"), bar[0])
                 # don't attach if there is already another bar line (perhaps from repeats)
                 except abjad.PersistentIndicatorError:
                     pass
@@ -370,11 +376,19 @@ class VerseMaker(mus.SegmentMaker):
         loop_positions = tuple(
             True if idx % loop_size == 0 else False for idx in range(len(self.bars))
         )
-        return mus.TrackMaker._adapt_bars_by_used_areas(loop_positions, self.used_areas)
+        adapted_by_used_areas = list(
+            mus.TrackMaker._adapt_bars_by_used_areas(loop_positions, self.used_areas)
+        )
+        for idx, insertdata in enumerate(self.added_bars):
+            insert_idx, _ = insertdata
+            adapted_by_used_areas.insert(idx + insert_idx, False)
+
+        return tuple(adapted_by_used_areas)
 
     def __call__(self) -> Verse:
         verse = super().__call__()
 
+        """
         # add special bar lines at each start of a new loop
         double_barlines_positions = self._find_double_barlines_positions()
         for track_name in self.orchestration:
@@ -391,6 +405,7 @@ class VerseMaker(mus.SegmentMaker):
                         )
                 else:
                     self._attach_double_barlines(staff, double_barlines_positions)
+        """
 
         # attach verse attribute (name or number of verse) to resulting verse object
         verse.verse = self.verse

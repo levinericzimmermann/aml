@@ -43,7 +43,7 @@ AVAILABLE_VERSES = tuple(
 RESOLUTION = mus.STANDARD_RESOLUTION
 
 
-_STRING_VOLUME = 0.7
+_STRING_VOLUME = 0.59
 
 ORCHESTRATION = mus.Orchestration(
     *tuple(
@@ -52,7 +52,7 @@ ORCHESTRATION = mus.Orchestration(
             ("violin", 3, _STRING_VOLUME * 1.1, 0.185),
             ("viola", 3, _STRING_VOLUME * 1, 0.8),
             ("cello", 3, _STRING_VOLUME * 1.2, 0.65),
-            ("keyboard", 3, 2.6, 0.38),
+            ("keyboard", 3, 3.2, 0.38),
         )
     )
 )
@@ -105,13 +105,13 @@ RATIO2PITCHCLASS = {
 
 
 def _mk_midi_pitch2abjad_pitch_tuple() -> tuple:
-    # pitch_number2pitch_class = tuple(
-    #     abjad.NamedPitchClass(name)
-    #     for name in "c df d ef e f gf g af a bf b".split(" ")
-    # )
     pitch_number2pitch_class = tuple(
-        abjad.NumberedPitchClass(number) for number in range(12)
+        abjad.NamedPitchClass(name)
+        for name in "c df d ef e f gf g af a bf b".split(" ")
     )
+    # pitch_number2pitch_class = tuple(
+    #     abjad.NumberedPitchClass(number) for number in range(12)
+    # )
     midi_pitch2abjad_pitch = tuple(abjad.NamedPitch(n - 60) for n in range(127))
     midi_pitch2abjad_pitch = tuple(abjad.NamedPitch(n - 60) for n in range(127))
     return tuple(
@@ -340,6 +340,11 @@ INSTRUMENT_NAME2OBJECT = {
 
 
 STANDARD_TEMPI = (
+    35,
+    36,
+    37,
+    38,
+    39,
     40,
     42,
     44,
@@ -401,9 +406,11 @@ METRICAL_PRIMES = (3, 4, 5)
 
 COMPOSITION_PATH = "aml/composition"
 BUILD_PATH = "aml/build"
-PARTBOOKS_PATH = "aml/build/partbooks"
-INTRODUCTION_PATH = "aml/build/introduction"
-INTRODUCTION_PICTURES_PATH = "aml/build/introduction/pictures"
+SCORE_PATH = "{}/score".format(BUILD_PATH)
+PARTBOOKS_PATH = "{}/partbooks".format(SCORE_PATH)
+INTRODUCTION_PATH = "{}/introduction".format(BUILD_PATH)
+INTRODUCTION_PICTURES_PATH = "{}/pictures".format(INTRODUCTION_PATH)
+COVER_PATH = "aml/cover"
 
 PYO_SERVER = pyo.Server(sr=44100, audio="offline", nchnls=3)
 PYO_SERVER.boot()

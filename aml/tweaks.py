@@ -23,6 +23,8 @@ from mutools import mus
 
 from aml import globals_
 
+from aml.trackmaker import keyboard
+
 
 def remove(nth_event: int, novent_line: lily.NOventLine) -> None:
     """if following / previous event is a rest the function is concatenating the rests"""
@@ -53,6 +55,30 @@ def remove(nth_event: int, novent_line: lily.NOventLine) -> None:
 
     else:
         novent_line[nth_event].pitch = []
+
+
+def postpone(
+    nth_event: int, value: fractions.Fraction, novent_line: lily.NOventLine
+) -> None:
+    try:
+        assert novent_line[nth_event].delay > value
+
+    except AssertionError:
+        msg = "Can't postpone event with value {} ".format(value)
+        msg += "because the event isn't long enough."
+        raise ValueError(msg)
+
+    novent_line[nth_event].delay -= value
+    novent_line[nth_event].duration -= value
+
+    if nth_event == 0 or novent_line[nth_event - 1].pitch:
+        novent_line.insert(
+            nth_event, lily.NOvent(pitch=[], delay=value, duration=value)
+        )
+
+    else:
+        novent_line[nth_event - 1].delay += value
+        novent_line[nth_event - 1].duration += value
 
 
 def prolong(
@@ -125,6 +151,10 @@ def swap_duration(
         novent_line[donor].duration -= swaped_size
 
 
+def eat(predator: int, victim: int, novent_line: lily.NOventLine) -> None:
+    swap_duration(victim, predator, novent_line[victim].duration, novent_line)
+
+
 def swap_pitch(idx0: int, idx1: int, novent_line: lily.NOventLine,) -> None:
     novent_line[idx0].pitch, novent_line[idx1].pitch = (
         novent_line[idx1].pitch,
@@ -188,6 +218,11 @@ def rest(idx: int, novent_line: lily.NOventLine) -> None:
         novent_line[idx] = empty_event
 
 
+def rest_many(indices: tuple, novent_line: lily.NOventLine) -> None:
+    for idx in sorted(indices, reverse=True):
+        rest(idx, novent_line)
+
+
 def split(
     nth_event: int,
     novent_line: lily.NOventLine,
@@ -248,6 +283,10 @@ def split(
                 rest(idx + nth_event, novent_line)
 
 
+def copy_pitch(origin: int, goal: int, novent_line: lily.NOventLine) -> None:
+    novent_line[goal].pitch = [p.copy() for p in novent_line[origin].pitch]
+
+
 def split_by_structure(
     nth_event: int,
     split_to_n_items: int,
@@ -255,6 +294,7 @@ def split_by_structure(
     verse_maker: mus.SegmentMaker,
     change_novent_line: bool = True,
     set_n_novents2rest: int = 0,
+    adapt_by_changed_structure: bool = False,
 ) -> None:
     assert split_to_n_items > 0
 
@@ -267,6 +307,14 @@ def split_by_structure(
             fractions.Fraction(absolute_novent_line[nth_event]),
             fractions.Fraction(absolute_novent_line[nth_event + 1]),
         )
+
+        if adapt_by_changed_structure:
+            bar_idx = verse_maker.violin.get_responsible_bar_index(start)
+            time_difference = verse_maker.time_distance_to_original_structure_per_bar[
+                bar_idx
+            ]
+            start += time_difference
+            stop += time_difference
 
         sml = verse_maker.transcription.spread_metrical_loop
         instruments = tuple(
@@ -341,13 +389,16 @@ def add_glissando(
     novent_line: lily.NOventLine,
     durations: tuple = tuple([]),
     verse_maker: mus.SegmentMaker = None,
+    adapt_by_changed_structure: bool = False,
 ):
     n_scale_degrees = len(scale_degrees)
 
-    assert verse_maker or durations or n_scale_degrees == 1
+    assert verse_maker or durations or n_scale_degrees in (1, 2)
 
     if not durations:
-        if n_scale_degrees > 1:
+        if n_scale_degrees == 2:
+            durations = (novent_line[nth_event].duration,)
+        elif n_scale_degrees > 2:
             durations = tuple(
                 fractions.Fraction(nv.delay)
                 for nv in split_by_structure(
@@ -356,6 +407,7 @@ def add_glissando(
                     novent_line,
                     verse_maker=verse_maker,
                     change_novent_line=False,
+                    adapt_by_changed_structure=adapt_by_changed_structure,
                 )
             )
 
@@ -482,3 +534,77 @@ def make_solo_gong(nth_event: int, novent_line: lily.NOventLine) -> None:
     novent_line[nth_event].ottava = attachments.Ottava(-1)
     novent_line[nth_event].pitch = list(sorted(novent_line[nth_event].pitch)[:1])
     novent_line[nth_event].articulation_once = None
+
+
+def add_gong(
+    nth_event: int,
+    novent_line: lily.NOventLine,
+    pitch: ji.JIPitch = None,
+    pedal: bool = True,
+) -> None:
+    if pitch is None:
+        pitches = novent_line[nth_event].pitch
+    else:
+        pitches = [pitch]
+
+    novent_line[nth_event].pitch = [
+        p.register(keyboard.SYMBOLIC_GONG_OCTAVE) for p in pitches
+    ]
+    novent_line[nth_event].pedal = attachments.Pedal(pedal)
+    novent_line[nth_event].ottava = attachments.Ottava(-1)
+
+
+def add_kenong(
+    nth_event: int, novent_line: lily.NOventLine, pitch: ji.JIPitch = None
+) -> None:
+    add_gong(nth_event, novent_line, pitch=pitch, pedal=False)
+
+
+def crop(
+    nth_event: int,
+    novent_line: lily.NOventLine,
+    *duration: fractions.Fraction,
+    position=True,
+) -> None:
+    summed_duration = sum(duration)
+    ev_duration = novent_line[nth_event].duration
+    try:
+        assert summed_duration <= ev_duration
+    except AssertionError:
+        msg = "Can't crop away '{}' from event '{}'.".format(
+            summed_duration, novent_line[nth_event]
+        )
+        raise ValueError(msg)
+
+    difference = ev_duration - summed_duration
+    if difference > 0:
+        duration += (difference,)
+
+    if not position:
+        duration = tuple(reversed(duration))
+
+    split(nth_event, novent_line, *duration)
+
+
+def detach_hauptstimme(novent_line: lily.NOventLine) -> None:
+    for ev in novent_line:
+        ev.hauptstimme = None
+
+
+def detach_optional_events(novent_line: lily.NOventLine) -> None:
+    for ev in novent_line:
+        ev.optional = None
+        ev.optional_some_pitches = None
+        ev.choose = None
+
+
+def set_pizz(nth_event: int, novent_line: lily.NOventLine) -> None:
+    novent_line[nth_event].string_contact_point = attachments.StringContactPoint(
+        "pizzicato"
+    )
+    novent_line[nth_event].volume = 1.3
+
+
+def set_arco(nth_event: int, novent_line: lily.NOventLine) -> None:
+    novent_line[nth_event].string_contact_point = attachments.StringContactPoint("arco")
+    novent_line[nth_event].volume = 0.486

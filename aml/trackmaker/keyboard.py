@@ -294,7 +294,8 @@ class Keyboard(general.AMLTrack):
             #     abjad.LilyPondLiteral("\\magnifyStaff #12/14", "before"), staff[0][0]
             # )
             abjad.attach(
-                abjad.LilyPondLiteral("\\accidentalStyle modern-cautionary", "before"),
+                # abjad.LilyPondLiteral("\\accidentalStyle modern-cautionary", "before"),
+                abjad.LilyPondLiteral("\\accidentalStyle dodecaphonic-first", "before"),
                 staff[0][0],
             )
 

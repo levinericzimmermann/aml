@@ -14,17 +14,14 @@ if __name__ == "__main__":
             ),
             title="kagem Karina"
         ),
-        # chapters.Chapter.from_path("{}/an-nuh".format(globals_.COMPOSITION_PATH)),
     )
 
     # render chapters
     [ch(render_each_instrument=False, render_verses=False) for ch in chap]
-    # [ch(render_each_instrument=False, render_verses=True) for ch in chap]
-    # [ch(render_each_instrument=True, render_verses=True) for ch in chap]
 
     # render introduction
     from aml import introduction
-    introduction.make_introduction(make_graphics=True)
+    introduction.make_introduction(make_graphics=False)
 
     # making partbooks & general score
     from aml import partbooks

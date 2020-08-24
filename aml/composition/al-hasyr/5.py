@@ -2264,9 +2264,11 @@ def main() -> versemaker.Verse:
 
             # adapting accidental notation of keyboard
             if instr == "keyboard" and idx[1] == 0:
-                # abjad.Accidental.respell_with_sharps(staff[1])
-                # abjad.Accidental.respell_with_flats(staff[7])
-                # abjad.Accidental.respell_with_flats(staff[8])
+                abjad.Accidental.respell_with_sharps(staff[0])
+                abjad.Accidental.respell_with_sharps(staff[1])
+                abjad.Accidental.respell_with_sharps(staff[2])
+                abjad.Accidental.respell_with_sharps(staff[3])
+
                 for n in (18, 19, 20):
                     staff[n] = abjad.mutate(getattr(verse, instr).abjad[1][1][n]).copy()
                     for idx, tone in enumerate(staff[n]):
@@ -2286,11 +2288,13 @@ def main() -> versemaker.Verse:
                     staff[21][0].written_pitches[1], staff[21][0].written_duration,
                 )
                 abjad.attach(abjad.StartBeam(), staff[21][0])
-
                 abjad.attach(abjad.Dynamic("ppp"), staff[18][0])
 
             elif instr == "keyboard" and idx[1] == 1:
-                # abjad.Accidental.respell_with_sharps(staff[11])
+                abjad.Accidental.respell_with_sharps(staff[0])
+                abjad.Accidental.respell_with_sharps(staff[1])
+                abjad.Accidental.respell_with_sharps(staff[3])
+
                 for n in (18, 19, 20):
                     new_bar = abjad.Container([])
                     for idx, tone in enumerate(staff[n]):

@@ -256,14 +256,14 @@ class Chapter(object):
                             instr_obj = globals_.INSTRUMENT_NAME2OBJECT[
                                 other_meta_track
                             ]
-                            abjad.setting(
-                                new_staff
-                            ).font_size = self._orientation_staff_size
                             magstep = abjad.Scheme(
                                 ["magstep", self._orientation_staff_size]
                             )
                             abjad.override(new_staff).staff_symbol.thickness = magstep
                             abjad.override(new_staff).staff_symbol.staff_space = magstep
+                            abjad.setting(
+                                new_staff
+                            ).font_size = self._orientation_staff_size
 
                             if is_first:
                                 instrument_name_markup = instr_obj.name

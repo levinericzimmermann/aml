@@ -53,7 +53,7 @@ from aml.trackmaker import general
 
 
 class String(general.AMLTrack):
-    base_shortest_duration = fractions.Fraction(1, 8)
+    base_shortest_duration = fractions.Fraction(1, 32)
     _orientation_staff_size = -4
 
     def __init__(
@@ -78,7 +78,8 @@ class String(general.AMLTrack):
             abjad.override(orientation_staff).staff_symbol.staff_space = magstep
 
         for literal in (
-            "\\accidentalStyle modern-cautionary",
+            # "\\accidentalStyle modern-cautionary",
+            "\\accidentalStyle dodecaphonic-no-repeat",
             "\\override StemTremolo.slope = #0.37",
             "\\override StemTremolo.beam-thickness = #0.3",
             "\\override StemTremolo.beam-width = #1.35",
@@ -87,15 +88,10 @@ class String(general.AMLTrack):
                 abjad.LilyPondLiteral(literal, "before"), abjad_data[1][0][0],
             )
 
-        abjad.attach(
-            abjad.Markup(
-                abjad.MarkupCommand(
-                    "smaller", abjad.MarkupCommand("italic", ["con sordino, non vibrato"])
-                ),
-                direction=abjad.enums.Up,
-            ),
-            abjad_data[1][0][0],
-        )
+        for mup in (globals_.CON_SORDINO_MARKUP, globals_.NONVIB_MARKUP):
+            abjad.attach(
+                mup, abjad_data[1][0][0],
+            )
 
         super().__init__(abjad_data, sound_engine, title, resolution)
 

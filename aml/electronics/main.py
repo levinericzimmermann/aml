@@ -8,6 +8,7 @@ if __name__ == "__main__":
 
     import pyo
 
+    import loclog
     import midi
     import mixing
     import pianoteq
@@ -17,13 +18,15 @@ if __name__ == "__main__":
     # adding possibility for testing the program with stereo mode and with stings
     # simulation.
     PARSER = argparse.ArgumentParser()
-    PARSER.add_argument("--simulation", type=bool, default=False)
+    PARSER.add_argument("--simulation", type=str, default=None)
     PARSER.add_argument("--channels", type=str, default="multichannel")
     PARSER.add_argument("--logging", type=bool, default=True)
+    PARSER.add_argument("--keyboard", type=bool, default=False)
     PARSED_ARGS = PARSER.parse_args()
-    USE_SIMULATION = PARSED_ARGS.simulation
+    SIMULATION_VERSE = PARSED_ARGS.simulation
     CHANNELS = PARSED_ARGS.channels
     SHOW_LOGGING = PARSED_ARGS.logging
+    ADD_KEYBOARD = PARSED_ARGS.keyboard
 
     # start performance mode
     subprocess.run("performance_on.sh", shell=True)
@@ -37,7 +40,7 @@ if __name__ == "__main__":
         [
             "pianoteq",
             "--preset",
-            'Concert Harp Daily',
+            "Concert Harp Daily",
             "--fxp",
             "aml.fxp",
             "--midimapping",
@@ -48,11 +51,20 @@ if __name__ == "__main__":
     )
     time.sleep(2)
 
+    # start htop
+    HTOP_LOGGER = loclog.HtopLogger()
+
+    with open(settings.MIDI_CONTROL_LOGGING_FILE, "w") as f:
+        f.write("RECEIVED-MIDI-CONTROL-MESSAGES\n")
+
     if SHOW_LOGGING:
         logging.basicConfig(level=logging.INFO)
 
     SERVER = pyo.Server(
-        audio="jack", midi="jack", nchnls=len(settings.PHYSICAL_OUTPUT2CHANNEL_MAPPING),
+        audio="jack",
+        midi="jack",
+        # nchnls={"mono": 1, "stereo": 2, "quadraphonic": 4, "multichannel": 8}[CHANNELS],
+        nchnls=len(settings.PHYSICAL_OUTPUT2CHANNEL_MAPPING),
     )
 
     # listening / sending to all midi output devices
@@ -67,10 +79,14 @@ if __name__ == "__main__":
     # MIXER.ctrl(title="master-out")
 
     logging.info("getting inputs")
-    if USE_SIMULATION:
+    if SIMULATION_VERSE:
+        VERSE_PATH = "{}/{}".format(settings.SIMULATION_PATH, SIMULATION_VERSE)
         INPUTS = {
-            instrument: pyo.SfPlayer(path, mul=0.7).play()
-            for instrument, path in settings.INPUT2SIMULATION_PATH_MAPPING.items()
+            instrument: pyo.SfPlayer(
+                "{}/{}/synthesis.wav".format(VERSE_PATH, instrument), mul=0.7,
+            )
+            for instrument, _ in settings.INPUT2INSTRUMENT_MAPPING.items()
+            if instrument != "pianoteq"
         }
         INPUTS.update({"pianoteq": pyo.Input(3)})
 
@@ -79,6 +95,9 @@ if __name__ == "__main__":
             instrument: pyo.Input(channel).play()
             for instrument, channel in settings.INPUT2INSTRUMENT_MAPPING.items()
         }
+
+    logging.info("adding meter for inputs")
+    INPUT_METER = loclog.Meter(*INPUTS.items())
 
     logging.info("sending pianoteq to mixer")
     MIXER.addInput(settings.TRACK2MIXER_NUMBER_MAPPING["pianoteq"], INPUTS["pianoteq"])
@@ -89,8 +108,12 @@ if __name__ == "__main__":
     )
 
     logging.info("generating midi synthesizer for keyboard player")
-    MIDI_SYNTH = midi.MidiSynth(SERVER)
-    MIDI_SYNTH.notes.keyboard()
+
+    MIDI_DATA_LOGGER = loclog.MidiDataLogger()
+    MIDI_SYNTH = midi.MidiSynth(SERVER, MIDI_DATA_LOGGER)
+
+    if ADD_KEYBOARD:
+        MIDI_SYNTH.notes.keyboard()
 
     logging.info("making string - input analysis objects")
     STRINGS = {
@@ -165,6 +188,15 @@ if __name__ == "__main__":
     if CHANNELS == "multichannel":
         [MIXER[i][0].out(i) for i in settings.PHYSICAL_OUTPUT2CHANNEL_MAPPING.values()]
 
+    elif CHANNELS == "quadraphonic":
+        [MIXER[i][0].play() for i in settings.PHYSICAL_OUTPUT2CHANNEL_MAPPING.values()]
+        PANNER = [
+            pyo.Pan(signal[0], outs=4, pan=[0, 0.35, 0.65, 1][i]).out()
+            for signal, i in zip(
+                MIXER, settings.PHYSICAL_OUTPUT2QUADRAPHONIC_PANNING.values()
+            )
+        ]
+
     elif CHANNELS == "stereo":
         [MIXER[i][0].play() for i in settings.PHYSICAL_OUTPUT2CHANNEL_MAPPING.values()]
         PANNER = [
@@ -191,23 +223,34 @@ if __name__ == "__main__":
         logging.info("Found midi devices...")
         pyo.pm_list_devices()
 
-    # Function called by CtlScan2 object.
-    def scanner(ctlnum, midichnl):
-        logging.info("MIDI channel: %d, controller number: %d" % (midichnl, ctlnum))
-
-    # Listen to controller input.
-    scan = pyo.CtlScan2(scanner, toprint=False)
-
     logging.info("starting gui")
     SERVER.start()
 
-    if USE_SIMULATION:
-        for message in mido.MidiFile(
-            "{}/keyboard_simulation.midi".format(settings.SIMULATION_PATH)
-        ).play():
-            SERVER.addMidiEvent(*message.bytes())
+    if SIMULATION_VERSE:
+        for instr in INPUTS:
+            if instr != "pianoteq":
+                INPUTS[instr] = INPUTS[instr].play(delay=0.25)
+
+        import threading
+
+        def _play_midi_file():
+            for message in mido.MidiFile(
+                "{}/keyboard/keyboard_simulation.midi".format(VERSE_PATH)
+            ).play():
+                SERVER.addMidiEvent(*message.bytes())
+
+        MIDI_PLAYER = threading.Thread(target=_play_midi_file)
+        MIDI_PLAYER.start()
 
     SERVER.gui(locals(), title="aml", exit=False)
 
+    INPUT_METER.close()
+    MIDI_DATA_LOGGER.close()
+    HTOP_LOGGER.close()
+
     PIANOTEQ_PROCESS.terminate()
+
+    if SIMULATION_VERSE:
+        MIDI_PLAYER.join(0)
+
     subprocess.run("performance_off.sh", shell=True)

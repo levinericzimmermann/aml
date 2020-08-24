@@ -46,4 +46,4 @@ class StringProcesser(object):
                 self.strings_mixer.addInput(
                     input_chnl, instrument_object.processed_signal
                 )
-                self.strings_mixer.setAmp(input_chnl, output_chnl, 1)
+                self.strings_mixer.setAmp(input_chnl, output_chnl, 0)

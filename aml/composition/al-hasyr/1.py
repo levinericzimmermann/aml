@@ -1,3 +1,5 @@
+import numpy as np
+
 from quicktions import Fraction as F
 
 import abjad
@@ -496,6 +498,27 @@ def _adapt_violin2(violin: lily.NOventLine, vm) -> None:
     tw.set_pizz(47, violin)
     tw.set_pizz(46, violin)
 
+    print("len(violin)", len(violin))
+
+    tw.rest_many((52,), violin)
+    tw.crop(51, violin, F(1, 8), F(3, 16), F(1, 16), F(3, 16), F(1, 16), F(3, 4))
+    violin[51].pitch = [ji.r(7, 9)]
+    violin[52].pitch = [ji.r(8, 9)]
+    violin[53].pitch = [ji.r(7, 9)]
+    violin[54].pitch = [ji.r(8, 9)]
+    violin[55].pitch = [ji.r(35, 32)]
+    violin[56].pitch = [ji.r(35, 32)]
+
+    for n in range(51, 57):
+        tw.set_pizz(n, violin)
+
+    tw.shorten(50, F(1, 16), violin)
+    tw.add_glissando(50, (1, 0, 0), violin, durations=[F(1, 8), F(1, 16)])
+
+    tw.crop(39, violin, F(1, 16) + F(1, 4), F(1, 8))
+    violin[40].pitch = [ji.r(48, 35)]
+    tw.set_pizz(40, violin)
+
 
 def _adapt_viola2(viola: lily.NOventLine, vm) -> None:
     tw.prolong(19, F(1, 32), viola)
@@ -562,6 +585,45 @@ def _adapt_viola2(viola: lily.NOventLine, vm) -> None:
     viola[49].pitch = [ji.r(2, 3)]
     tw.set_pizz(49, viola)
 
+    tw.rest_many((56, 55, 53, 52), viola)
+    tw.crop(
+        51,
+        viola,
+        F(1, 8),
+        F(1, 4),
+        F(1, 8),
+        F(1, 8),
+        F(1, 8),
+        F(3, 16),
+        F(1, 16),
+        F(1, 8),
+        F(1, 8),
+        F(1, 8),
+        F(1, 8),
+        F(1, 8),
+        F(1, 8),
+    )
+    viola[52].pitch = [ji.r(35, 48)]
+    viola[54].pitch = [ji.r(2, 3)]
+    viola[56].pitch = [ji.r(2, 3)]
+    viola[57].pitch = [ji.r(7, 8)]
+    viola[58].pitch = [ji.r(35, 48)]
+
+    for n in range(59, 64):
+        viola[n].pitch = [ji.r(7, 8)]
+
+    for n in (51, 53, 55, 56, 57, 58, 59, 60, 61, 62):
+        if n == 51:
+            tw.set_arco(n + 1, viola)
+        else:
+            tw.set_pizz(n + 1, viola)
+
+    for idx, value in enumerate(np.linspace(1.1, 0.2, 5)):
+        viola[59 + idx].volume = float(value)
+
+    tw.shorten(52, F(1, 16), viola)
+    tw.add_glissando(52, (1, 0, 0), viola, durations=[F(1, 8), F(1, 16)])
+
 
 def _adapt_cello2(cello: lily.NOventLine, vm) -> None:
     tw.crop(12, cello, F(2, 8), F(1, 16), F(3, 16))
@@ -623,6 +685,27 @@ def _adapt_cello2(cello: lily.NOventLine, vm) -> None:
     tw.shorten(42, F(1, 4), cello)
     tw.set_arco(42, cello)
 
+    print("len(cello)", len(cello))
+
+    tw.rest_many((46, 45, 44), cello)
+    tw.crop(
+        43, cello, F(1, 8), F(3, 8), F(3, 16), F(1, 16), F(3, 16), F(1, 16), F(3, 8)
+    )
+    cello[44].pitch = [ji.r(7, 12)]
+    cello[45].pitch = [ji.r(1, 2)]
+    cello[46].pitch = [ji.r(7, 12)]
+    cello[47].pitch = [ji.r(8, 15)]
+    cello[49].pitch = [ji.r(7, 12)]
+
+    tw.split(44, cello, F(1, 4), F(1, 8))
+
+    for n in (44, 45, 46, 47, 48, 50):
+        tw.set_pizz(n, cello)
+
+    tw.set_arco(44, cello)
+    tw.shorten(44, F(1, 16), cello)
+    tw.add_glissando(44, (-1, 0, 0), cello, durations=[F(1, 8), F(1, 16)])
+
 
 def _adapt_right2(right: lily.NOventLine, vm) -> None:
     tw.swap_duration(12, 13, F(1, 16), right)
@@ -662,6 +745,20 @@ def _adapt_right2(right: lily.NOventLine, vm) -> None:
     [tw.eat(35, 36, right) for _ in range(9)]
     right[35].pitch.extend([ji.r(7, 4), ji.r(35, 12)])
 
+    print("right", len(right))
+
+    tw.shorten(35, F(1, 1), right)
+    tw.crop(36, right, F(1, 8), F(1, 8), F(1, 8), F(1, 8), F(1, 8), F(1, 8), F(1, 4))
+    right[36].pitch = [ji.r(7, 3), ji.r(35, 12)]
+    right[37].pitch = [ji.r(14, 9), ji.r(2, 1)]
+    right[38].pitch = [ji.r(2, 1)]
+    right[39].pitch = [ji.r(14, 9), ji.r(2, 1)]
+    right[40].pitch = [ji.r(16, 15)]
+    right[41].pitch = [ji.r(7, 4), ji.r(14, 9)]
+    right[42].pitch = [ji.r(7, 3), ji.r(35, 12)]
+
+    tw.shorten(35, F(1, 4), right)
+
 
 def _adapt_left2(left: lily.NOventLine, vm) -> None:
     tw.rest_many((25, 26), left)
@@ -700,6 +797,21 @@ def _adapt_left2(left: lily.NOventLine, vm) -> None:
     # left[43].arpeggio = None
 
     left[46].pitch = [ji.r(7, 18), ji.r(7, 24)]
+
+    print("left", len(left))
+
+    tw.eat(46, 47, left)
+    tw.make_solo_gong(47, left)
+    tw.add_kenong(48, left, ji.r(1, 1))
+    tw.add_kenong(49, left, ji.r(16, 15))
+
+    left[48].pitch = [ji.r(1, 4)]
+    left[48].volume = 0.81
+    left[49].pitch = [ji.r(4, 15)]
+    left[49].volume = 0.83
+
+    # tw.swap_duration(48, 47, F(1, 16), left)
+    # tw.swap_duration(49, 48, F(1, 16), left)
 
 
 def main() -> versemaker.Verse:
@@ -811,7 +923,7 @@ def main() -> versemaker.Verse:
             nth_line = (1,)
 
         novent_line = getattr(vm, instr).musdat[nth_line[0]]
-        novent_line[0].dynamic = attachments.Dynamic("ppp")
+        novent_line[0].dynamic = attachments.Dynamic("pp")
 
     for string in (vm.violin.musdat[1], vm.viola.musdat[1], vm.cello.musdat[1]):
         tw.detach_hauptstimme(string)
@@ -841,11 +953,43 @@ def main() -> versemaker.Verse:
                 abjad.Accidental.respell_with_sharps(staff[7])
                 abjad.Accidental.respell_with_flats(staff[8])
 
+                abjad.Accidental.respell_with_sharps(staff[15][2:])
+
+                abjad.attach(abjad.Tie(), staff[19][1])
+                abjad.attach(abjad.Tie(), staff[19][2])
+
             elif instr == "keyboard" and idx[1] == 1:
                 # abjad.Accidental.respell_with_sharps(staff[11])
                 abjad.Accidental.respell_with_sharps(staff[1])
                 abjad.Accidental.respell_with_sharps(staff[2])
                 abjad.Accidental.respell_with_sharps(staff[3])
                 # abjad.Accidental.respell_with_sharps(staff[4])
+
+                # abjad.attach(abjad.Ottava(-1), staff[9][0])
+                # tw.put_gong_to_separate_vox(9, 0, staff)
+
+            elif instr == "violin":
+                abjad.detach(abjad.Markup, staff[2][2])
+                abjad.attach(
+                    tw.scpm("arco sul tasto"), staff[2][2],
+                )
+                abjad.attach(
+                    tw.scpm("molto sul tasto"), staff[3][2],
+                )
+                abjad.attach(abjad.StartHairpin(">"), staff[3][2])
+                abjad.attach(abjad.Dynamic("ppp"), staff[4][0])
+                abjad.attach(abjad.Dynamic("pp"), staff[4][1])
+                abjad.detach(abjad.Markup, staff[5][1])
+                abjad.attach(
+                    tw.scpm("arco ordinario"), staff[5][1],
+                )
+
+            elif instr == "viola":
+                abjad.attach(
+                    abjad.StartTextSpan(left_text=abjad.Markup("rit.")), staff[-1][0]
+                )
+                abjad.attach(abjad.StopTextSpan(), staff[-1][-1])
+                abjad.attach(abjad.StartHairpin(">"), staff[-1][0])
+                abjad.attach(abjad.Dynamic("ppp"), staff[-1][-1])
 
     return verse

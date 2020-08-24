@@ -37,6 +37,20 @@ PHYSICAL_OUTPUT2STEREO_PANNING = {
     for name in PHYSICAL_OUTPUT2STEREO_PANNING
 }
 
+PHYSICAL_OUTPUT2QUADRAPHONIC_PANNING = {
+    # radios or other loudspeakers with a strong filter
+    "radio_ll": 0,
+    "radio_lr": 1,
+    "radio_rl": 2,
+    "radio_rr": 3,
+    # transducers that have been attached on the instruments
+    "violin": 0,
+    "viola": 3,
+    "cello": 2,
+    # usual keyboard amplifier
+    "pianoteq": 1,
+}
+
 INPUT2INSTRUMENT_MAPPING = {
     # dpa microphones
     "violin": 0,
@@ -47,17 +61,12 @@ INPUT2INSTRUMENT_MAPPING = {
 }
 
 
-SIMULATION_PATH = "simulations"
-
-INPUT2SIMULATION_PATH_MAPPING = {
-    instr: "{}/{}.wav".format(SIMULATION_PATH, instr)
-    for instr in ("violin", "viola", "cello")
-}
+SIMULATION_PATH = "../build/chapters/al-hasyr"
 
 
 # the next dict describes the real positions where the string players are placed on the
 # stage where 0 is very left, 1 is left-right, 2 is right-left and 3 is very right
-STRING_INSTRUMENT2ROOM_POSITION = {"violin": 0, "cello": 1, "viola": 3}
+STRING_INSTRUMENT2ROOM_POSITION = {"violin": 0, "cello": 2, "viola": 3}
 
 
 TRACK2MIXER_NUMBER_MAPPING = {
@@ -230,3 +239,7 @@ CONTROLLED_SIGNAL2KORG_NANOCONTROL_STRIP = {
 SOLO_BUTTON, MUTE_BUTTON = 1, 2
 
 CONTROLLED_SIGNAL_SCENE = 2
+
+MIDI_CONTROL_LOGGING_FILE = "MID_CTL_LOGGING"
+
+TERMINAL_LOGGING_SCALING = 1

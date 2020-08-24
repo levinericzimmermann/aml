@@ -420,3 +420,16 @@ ADD_COMPROVISATION = False
 
 # paper format for score
 FORMAT = mus.A4
+
+NONVIB_MARKUP = abjad.Markup(
+    [abjad.MarkupCommand("fontsize", -2.3), abjad.MarkupCommand("italic", ["non vibrato"])],
+    direction=abjad.enums.Up,
+)
+CON_SORDINO_MARKUP = abjad.Markup(
+    [abjad.MarkupCommand("fontsize", -2.3), abjad.MarkupCommand("italic", ["con sordino"])],
+    direction=abjad.enums.Up,
+)
+ATEMPO_MARKUP = abjad.Markup(
+    [abjad.MarkupCommand("fontsize", -2.3), abjad.MarkupCommand("italic", ["a tempo"])],
+    direction=abjad.enums.Up,
+)

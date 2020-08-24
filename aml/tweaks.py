@@ -608,3 +608,56 @@ def set_pizz(nth_event: int, novent_line: lily.NOventLine) -> None:
 def set_arco(nth_event: int, novent_line: lily.NOventLine) -> None:
     novent_line[nth_event].string_contact_point = attachments.StringContactPoint("arco")
     novent_line[nth_event].volume = 0.486
+
+
+def scpm(position: str) -> abjad.Markup:
+    return abjad.Markup(
+        [
+            abjad.MarkupCommand("fontsize", -2.4),
+            abjad.StringContactPoint(position).markup,
+        ],
+        direction="up",
+    )
+
+
+def put_gong_to_separate_vox(nth_bar: int, nth_item: int, staff: abjad.Staff) -> None:
+    event2separate = abjad.mutate(staff[nth_bar][nth_item]).copy()
+    staff[nth_bar][nth_item] = abjad.Container(
+        [
+            abjad.Voice(
+                [
+                    abjad.Note(
+                        event2separate.written_pitches[0],
+                        event2separate.written_duration,
+                    )
+                ]
+            ),
+            abjad.Voice(
+                [
+                    abjad.Chord(
+                        event2separate.written_pitches[1:],
+                        event2separate.written_duration,
+                    )
+                ]
+            ),
+        ],
+        simultaneous=True,
+    )
+    for text in (
+        r'\set Staff.ottavation = #"8vb"',
+        r"\once \override Staff.OttavaBracket.direction = #DOWN",
+        r"\set Voice.middleCPosition = #(+ 6 7)",
+    ):
+        abjad.attach(
+            abjad.LilyPondLiteral(text, format_slot="before"),
+            staff[nth_bar][nth_item][0][0],
+        )
+
+    for text in (
+        r"\unset Staff.ottavation",
+        r"\unset Voice.middleCPosition",
+    ):
+        abjad.attach(
+            abjad.LilyPondLiteral(text, format_slot="after"),
+            staff[nth_bar][nth_item][0][0],
+        )

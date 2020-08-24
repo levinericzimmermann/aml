@@ -10,7 +10,8 @@ from aml import globals_
 def _make_basic_document(paper_format: mus.PaperFormat) -> PyPDF2.PdfFileMerger:
     merger = PyPDF2.PdfFileMerger()
     merger.append("{}/cover_{}.pdf".format(globals_.COVER_PATH, paper_format.name))
-    for language in ("de", "en"):
+    # for language in ("de", "en"):  # english remarks aren't finished yet
+    for language in ("de",):
         merger.append(
             "{}/introduction_{}_{}.pdf".format(
                 globals_.INTRODUCTION_PATH, paper_format.name, language

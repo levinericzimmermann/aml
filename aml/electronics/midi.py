@@ -195,7 +195,8 @@ class MidiSynth(object):
 
     _available_sine_generators = (("sine", SineGenerator),)
 
-    def __init__(self, server: pyo.Server):
+    def __init__(self, server: pyo.Server, midi_data_logger):
+        self.midi_data_logger = midi_data_logger
         self.server = server
         self.previous_hauptstimme_instrument = set([])
         self._last_trigger_time = time.time()
@@ -251,7 +252,7 @@ class MidiSynth(object):
     def _trigger_on_function(self, voice: int) -> None:
         midi_note = int(self.notes["pitch"].get(all=True)[voice])
         velocity = self.notes["velocity"].get(all=True)[voice]
-        self._log_trigger_info(voice, midi_note, velocity)
+        self.midi_data_logger.load_note_on_data(voice, midi_note, velocity)
         try:
             generator_name = self.get_nth_generator(midi_note)
         except KeyError:
@@ -315,7 +316,6 @@ class MidiSynth(object):
 
     def spatialise_gong(self, generator: MonophonGongGenerator, delay: float) -> None:
         def spatialise():
-            print("spat")
             spats = next(self.gong_spatialisation_cycle)
             for spat, idx in zip(
                 spats, (generator.mixer_idx_left, generator.mixer_idx_right)

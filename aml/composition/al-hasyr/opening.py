@@ -84,6 +84,8 @@ def _add_vl_intro(violin: lily.NOventLine, vm) -> None:
     # tw.crop(112, violin, F(2, 4))
     # violin[113].pitch = [ji.r(8, 9)]
 
+    violin[6].ornamentation = attachments.OrnamentationUp(1)
+
 
 def _add_va_intro(viola: lily.NOventLine, vm) -> None:
     tw.crop(4, viola, F(1, 4), F(2, 4))
@@ -159,6 +161,9 @@ def _add_left_intro(left: lily.NOventLine, vm) -> None:
     left[121].volume = 0.4
 
     # print('left', len(left))
+
+    left[40].pitch = left[40].pitch[1:]
+    left[45].pitch = left[45].pitch[1:]
 
 
 def _adapt_violin(violin: lily.NOventLine, vm) -> None:
@@ -1201,6 +1206,7 @@ def _adapt_keyboard_left(left: lily.NOventLine, vm) -> None:
     left[44].pitch.append(ji.r(7, 6))
     left[44].pitch.append(ji.r(35, 32))
 
+    left[59].ottava = attachments.Ottava(0)
     tw.crop(59, left, F(2, 4))
     # tw.add_kenong(60, left, ji.r(35, 32))
     # left[60].volume = 0.6
@@ -1954,15 +1960,6 @@ def main() -> versemaker.Verse:
     ):
         tw.detach_optional_events(instr)
 
-    for instr in ("violin", "viola", "cello", "keyboard"):
-        if instr == "keyboard":
-            nth_line = (2, 1)
-        else:
-            nth_line = (1,)
-
-        novent_line = getattr(vm, instr).musdat[nth_line[0]]
-        novent_line[0].dynamic = attachments.Dynamic("pp")
-
     # vm.force_remove_area(1, 3)
 
     verse = vm()
@@ -1978,48 +1975,49 @@ def main() -> versemaker.Verse:
             for subidx in idx:
                 staff = staff[subidx]
 
-            # [bar_idx][event_idx]
-            # if type(staff[-1][-1]) == abjad.MultimeasureRest:
-            #     fermata = abjad.LilyPondLiteral(
-            #         "\\fermataMarkup", format_slot="absolute_after"
-            #     )
-            # else:
-            #     fermata = abjad.Fermata()
-
-            # abjad.attach(fermata, staff[-1][-1])
-
             # adapting accidental notation of keyboard
             if instr == "keyboard" and idx[1] == 0:
-                # del staff[3][3]
-                # staff[3].append(abjad.Note('a', F(1, 16)))
-                # staff[3].append(abjad.Note('bf', F(1, 16)))
-                # staff[3].append(abjad.Rest(F(1, 16)))
-                # staff[3].append(abjad.Note('g', F(1, 16)))
-                # abjad.attach(abjad.StartBeam(), staff[3][3])
-                # abjad.attach(abjad.Ottava(-1), staff[3][3])
-                # abjad.attach(abjad.StopBeam(), staff[3][6])
-                # abjad.attach(abjad.Ottava(0), staff[4][0])
-
                 abjad.Accidental.respell_with_sharps(staff[6][2:])
                 abjad.Accidental.respell_with_sharps(staff[7])
                 abjad.Accidental.respell_with_sharps(staff[8])
-                abjad.Accidental.respell_with_sharps(staff[14][1:])
+                abjad.Accidental.respell_with_sharps(staff[12])
+                abjad.Accidental.respell_with_sharps(staff[13])
+                abjad.Accidental.respell_with_sharps(staff[14])
                 abjad.Accidental.respell_with_sharps(staff[15])
                 abjad.Accidental.respell_with_sharps(staff[24])
+                abjad.Accidental.respell_with_sharps(staff[29])
+                abjad.Accidental.respell_with_sharps(staff[30])
                 abjad.Accidental.respell_with_sharps(staff[31])
 
+                abjad.attach(
+                    abjad.StartTextSpan(left_text=abjad.Markup("rit.")), staff[15][-1],
+                )
+                abjad.attach(
+                    abjad.StopTextSpan(), staff[16][0],
+                )
+                abjad.attach(globals_.ATEMPO_MARKUP, staff[19][0])
+                abjad.attach(
+                    abjad.StartTextSpan(left_text=abjad.Markup("rit.")), staff[31][1],
+                )
+                abjad.attach(
+                    abjad.StopTextSpan(), staff[32][0],
+                )
+
+                staff[23] = abjad.Container([abjad.Note("cs,,", 3 / 4)])
+                abjad.attach(abjad.Clef("bass_8"), staff[23][0])
+                abjad.attach(abjad.Clef("treble^8"), staff[24][0])
+                # abjad.detach(abjad.StartPianoPedal, staff[23][0])
+                # abjad.detach(abjad.StartPianoPedal, staff[24][0])
+                # abjad.attach(abjad.StartPianoPedal("sustain"), staff[23][0])
+                # abjad.attach(abjad.StopPianoPedal("sustain"), staff[24][0])
+
             elif instr == "keyboard" and idx[1] == 1:
-                # del staff[3][4]
-                # del staff[3][5]
-                # del staff[3][7]
-
-                # staff[3].insert(4, abjad.Rest(F(1, 8)))
-                # staff[3][5] = abjad.Note('g,,', F(1, 8))
-
                 abjad.Accidental.respell_with_sharps(staff[1][3:])
                 abjad.Accidental.respell_with_sharps(staff[6][3:])
                 abjad.Accidental.respell_with_sharps(staff[7])
                 abjad.Accidental.respell_with_sharps(staff[8])
+                abjad.Accidental.respell_with_sharps(staff[12])
+                abjad.Accidental.respell_with_sharps(staff[13])
                 abjad.Accidental.respell_with_sharps(staff[14])
                 abjad.Accidental.respell_with_sharps(staff[15])
                 abjad.Accidental.respell_with_sharps(staff[17])
@@ -2030,24 +2028,332 @@ def main() -> versemaker.Verse:
                 abjad.Accidental.respell_with_sharps(staff[22])
                 abjad.Accidental.respell_with_sharps(staff[23])
                 abjad.Accidental.respell_with_sharps(staff[24])
+                abjad.Accidental.respell_with_sharps(staff[29])
+                abjad.Accidental.respell_with_sharps(staff[30])
                 abjad.Accidental.respell_with_sharps(staff[31])
                 abjad.Accidental.respell_with_sharps(staff[32])
 
-            # lily.attach_empty_grace_note_at_beggining_of_every_bar(staff)
+                abjad.attach(abjad.Ottava(1), staff[28][0])
+                abjad.attach(abjad.Ottava(0), staff[28][-1])
 
-            if instr == "viola":
+                abjad.attach(
+                    abjad.Dynamic("p"), staff[0][0],
+                )
+                abjad.attach(
+                    abjad.Dynamic("pp"), staff[9][0],
+                )
+                abjad.attach(
+                    abjad.Dynamic("p"), staff[12][1],
+                )
+                abjad.attach(
+                    abjad.Dynamic("ppp"), staff[16][0],
+                )
+                abjad.attach(
+                    abjad.Dynamic("p"), staff[19][1],
+                )
+                abjad.attach(
+                    abjad.Dynamic("pp"), staff[29][0],
+                )
+                staff[23][0].note_heads = staff[23][0].note_heads[1:]
+                abjad.detach(abjad.Ottava, staff[23][0])
+                # abjad.detach(abjad.StartPianoPedal, staff[23][0])
+                # abjad.detach(abjad.StopPianoPedal, staff[24][0])
+
+                staff[26][-1].written_pitches = abjad.PitchSegment("cf' ef'")
+
+            elif instr == "violin":
+                abjad.detach(abjad.Markup, staff[0][0])
+                abjad.attach(
+                    tw.scpm("sul ponticello"), staff[0][0],
+                )
+                abjad.attach(
+                    globals_.NONVIB_MARKUP, staff[0][0],
+                )
+                abjad.attach(
+                    globals_.CON_SORDINO_MARKUP, staff[0][0],
+                )
+                abjad.attach(
+                    abjad.Dynamic("p"), staff[0][0],
+                )
+                abjad.detach(abjad.Markup, staff[2][1])
+                abjad.attach(
+                    tw.scpm("arco sul ponticello"), staff[2][1],
+                )
+                abjad.detach(abjad.Markup, staff[5][2])
+                abjad.attach(
+                    tw.scpm("arco sul ponticello"), staff[5][2],
+                )
+                abjad.attach(
+                    tw.scpm("pizzicato"), staff[9][0],
+                )
+                abjad.attach(
+                    abjad.Dynamic("pp"), staff[9][0],
+                )
+                abjad.detach(abjad.Markup, staff[11][1])
+                abjad.attach(
+                    tw.scpm("arco sul ponticello"), staff[11][1],
+                )
+                abjad.attach(
+                    abjad.Dynamic("ppp"), staff[11][1],
+                )
+                abjad.attach(
+                    abjad.StartHairpin(), staff[12][0],
+                )
+                abjad.attach(
+                    abjad.Dynamic("p"), staff[12][4],
+                )
+                abjad.attach(
+                    tw.scpm("ordinario"), staff[12][4],
+                )
+                abjad.attach(
+                    abjad.StartHairpin(">"), staff[15][2],
+                )
+                abjad.attach(
+                    abjad.StartTextSpan(left_text=abjad.Markup("rit.")), staff[15][2],
+                )
+                abjad.attach(
+                    abjad.StopTextSpan(), staff[16][0],
+                )
+                abjad.attach(
+                    abjad.Dynamic("pppp"), staff[16][0],
+                )
+                abjad.attach(
+                    tw.scpm("sul tasto"), staff[16][0],
+                )
+                abjad.attach(
+                    tw.scpm("sul ponticello"), staff[18][1],
+                )
+                abjad.attach(
+                    abjad.Dynamic("ppp"), staff[18][1],
+                )
+                abjad.attach(globals_.ATEMPO_MARKUP, staff[19][0])
+                abjad.attach(
+                    abjad.Dynamic("pp"), staff[20][0],
+                )
+                abjad.attach(
+                    tw.scpm("ordinario"), staff[20][1],
+                )
+
+                abjad.detach(abjad.Markup, staff[24][2])
+                abjad.attach(
+                    tw.scpm("arco sul ponticello"), staff[24][2],
+                )
+                for n in (29, 30, 31):
+                    abjad.detach(abjad.Markup, staff[n][1])
+                    abjad.attach(
+                        tw.scpm("arco sul tasto"), staff[n][1],
+                    )
+
+                abjad.attach(
+                    tw.scpm("molto sul tasto"), staff[32][0],
+                )
+                abjad.attach(
+                    abjad.StartTextSpan(left_text=abjad.Markup("rit.")), staff[31][1],
+                )
+                abjad.attach(
+                    abjad.StopTextSpan(), staff[32][0],
+                )
+                abjad.attach(
+                    abjad.StartHairpin(">"), staff[31][1],
+                )
+                abjad.attach(
+                    abjad.Dynamic("ppp"), staff[32][0],
+                )
+            elif instr == "viola":
                 clef = attachments.Clef("alto")
                 clef.attach(staff[0], None)
-
-            '''moved to trackmacker.strings.String
-            if instr != "keyboard":
                 abjad.attach(
-                    abjad.Markup(
-                        abjad.MarkupCommand("italic", ["con sordino, non vibrato"]),
-                        direction=abjad.enums.Up,
-                    ),
-                    staff[0][0],
+                    abjad.Dynamic("pp"), staff[1][1],
                 )
-            '''
+                abjad.attach(
+                    tw.scpm("sul tasto"), staff[1][1],
+                )
+                abjad.attach(
+                    abjad.Dynamic("p"), staff[2][0],
+                )
+                abjad.attach(
+                    abjad.Dynamic("pp"), staff[3][0],
+                )
+                abjad.detach(abjad.Markup, staff[3][0])
+                abjad.attach(
+                    tw.scpm("arco sul tasto"), staff[3][0],
+                )
+                abjad.attach(
+                    abjad.Dynamic("p"), staff[4][0],
+                )
+                abjad.attach(
+                    abjad.Dynamic("pp"), staff[5][0],
+                )
+                abjad.detach(abjad.Markup, staff[5][0])
+                abjad.attach(
+                    tw.scpm("arco sul tasto"), staff[5][0],
+                )
+
+                abjad.detach(abjad.Markup, staff[6][-1])
+                abjad.attach(
+                    tw.scpm("arco sul ponticello"), staff[6][-1],
+                )
+                abjad.attach(
+                    tw.scpm("pizzicato"), staff[9][0],
+                )
+                abjad.attach(
+                    abjad.Dynamic("pp"), staff[9][0],
+                )
+                abjad.detach(abjad.Markup, staff[11][2])
+                abjad.attach(
+                    tw.scpm("arco sul ponticello"), staff[11][2],
+                )
+                abjad.attach(
+                    abjad.Dynamic("ppp"), staff[11][2],
+                )
+                abjad.attach(
+                    abjad.StartHairpin("<"), staff[12][0],
+                )
+                abjad.attach(
+                    abjad.Dynamic("pp"), staff[14][1],
+                )
+                abjad.attach(
+                    abjad.StartTextSpan(left_text=abjad.Markup("rit.")), staff[15][2],
+                )
+                abjad.attach(
+                    abjad.StopTextSpan(), staff[16][0],
+                )
+                abjad.attach(
+                    abjad.Dynamic("p"), staff[12][4],
+                )
+                abjad.attach(
+                    tw.scpm("ordinario"), staff[12][4],
+                )
+                abjad.attach(
+                    abjad.StartHairpin(">"), staff[15][2],
+                )
+                abjad.attach(
+                    abjad.Dynamic("pppp"), staff[16][0],
+                )
+                abjad.attach(
+                    tw.scpm("sul tasto"), staff[16][0],
+                )
+                abjad.attach(globals_.ATEMPO_MARKUP, staff[19][0])
+                abjad.attach(
+                    abjad.Dynamic("pp"), staff[20][0],
+                )
+                abjad.detach(abjad.Markup, staff[20][-1])
+                abjad.attach(
+                    tw.scpm("arco ordinario"), staff[20][-1],
+                )
+                abjad.detach(abjad.Markup, staff[24][1])
+                abjad.attach(
+                    tw.scpm("arco sul ponticello"), staff[24][1],
+                )
+                for n in (30, 31):
+                    abjad.detach(abjad.Markup, staff[n][1])
+                    abjad.attach(
+                        tw.scpm("arco sul tasto"), staff[n][1],
+                    )
+
+                abjad.attach(
+                    tw.scpm("molto sul tasto"), staff[32][0],
+                )
+                abjad.attach(
+                    abjad.StartTextSpan(left_text=abjad.Markup("rit.")), staff[31][1],
+                )
+                abjad.attach(
+                    abjad.StopTextSpan(), staff[32][0],
+                )
+                abjad.attach(
+                    abjad.StartHairpin(">"), staff[31][1],
+                )
+                abjad.attach(
+                    abjad.Dynamic("ppp"), staff[32][0],
+                )
+            elif instr == "cello":
+                abjad.attach(
+                    abjad.Dynamic("pp"), staff[1][0],
+                )
+                abjad.attach(
+                    tw.scpm("sul tasto"), staff[1][0],
+                )
+                abjad.attach(
+                    abjad.Dynamic("p"), staff[2][0],
+                )
+                abjad.attach(
+                    abjad.Dynamic("pp"), staff[3][0],
+                )
+                abjad.detach(abjad.Markup, staff[3][0])
+                abjad.attach(
+                    tw.scpm("arco sul tasto"), staff[3][0],
+                )
+                abjad.attach(
+                    abjad.Dynamic("p"), staff[4][0],
+                )
+                abjad.attach(
+                    abjad.Dynamic("pp"), staff[5][0],
+                )
+                abjad.detach(abjad.Markup, staff[5][1])
+                abjad.attach(
+                    tw.scpm("arco sul tasto"), staff[5][1],
+                )
+
+                abjad.attach(abjad.Articulation("tenuto"), staff[6][1])
+                abjad.attach(
+                    tw.scpm("pizzicato"), staff[9][0],
+                )
+                abjad.attach(
+                    abjad.Dynamic("pp"), staff[9][0],
+                )
+                abjad.attach(
+                    abjad.Dynamic("p"), staff[12][1],
+                )
+                abjad.attach(
+                    abjad.StartHairpin(">"), staff[15][2],
+                )
+                abjad.attach(
+                    abjad.StartTextSpan(left_text=abjad.Markup("rit.")), staff[15][2],
+                )
+                abjad.attach(
+                    abjad.StopTextSpan(), staff[16][0],
+                )
+                abjad.attach(
+                    abjad.Dynamic("pppp"), staff[16][0],
+                )
+                abjad.attach(
+                    tw.scpm("sul tasto"), staff[16][0],
+                )
+                abjad.attach(globals_.ATEMPO_MARKUP, staff[19][0])
+                abjad.attach(
+                    abjad.Dynamic("pp"), staff[20][0],
+                )
+                abjad.attach(
+                    tw.scpm("ordinario"), staff[20][1],
+                )
+                abjad.detach(abjad.Markup, staff[24][2])
+                abjad.attach(
+                    tw.scpm("arco sul ponticello"), staff[24][2],
+                )
+                for n in (29, 30, 31):
+                    if n == 31:
+                        m = 2
+                    else:
+                        m = 1
+                    abjad.detach(abjad.Markup, staff[n][m])
+                    abjad.attach(
+                        tw.scpm("arco sul tasto"), staff[n][m],
+                    )
+
+                abjad.attach(
+                    tw.scpm("molto sul tasto"), staff[32][0],
+                )
+                abjad.attach(
+                    abjad.StartTextSpan(left_text=abjad.Markup("rit.")), staff[31][1],
+                )
+                abjad.attach(
+                    abjad.StopTextSpan(), staff[32][0],
+                )
+                abjad.attach(
+                    abjad.StartHairpin(">"), staff[31][1],
+                )
+                abjad.attach(
+                    abjad.Dynamic("ppp"), staff[32][0],
+                )
 
     return verse

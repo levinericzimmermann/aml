@@ -1463,6 +1463,13 @@ def main() -> versemaker.Verse:
                 abjad.attach(abjad.StartHairpin(">"), staff[31][4])
                 abjad.attach(abjad.Dynamic("pppp"), staff[33][0])
 
+                abjad.attach(abjad.Fermata("longfermata"), staff[-1][-1])
+
+                abjad.detach(globals_.NONVIB_MARKUP, staff[0][0])
+                abjad.detach(globals_.CON_SORDINO_MARKUP, staff[0][0])
+                abjad.attach(globals_.NONVIB_MARKUP, staff[0][1])
+                abjad.attach(globals_.CON_SORDINO_MARKUP, staff[0][1])
+
                 # abjad.attach(FLAUTANDO, staff[33][0])
 
             elif instr == "keyboard":

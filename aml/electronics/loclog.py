@@ -29,7 +29,7 @@ class LogTermLogger(TermLogger):
 class Meter(LogTermLogger):
     _n_bars = 55
     _min = 0
-    _max = 0.5
+    _max = 0.4
 
     def __init__(self, *name_signal_pair, title: str = "INPUTS"):
         self._title = title

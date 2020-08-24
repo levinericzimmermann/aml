@@ -82,6 +82,9 @@ TRACK2MIXER_NUMBER_MAPPING = {
     "strings_lr": 9,
     "strings_rl": 10,
     "strings_rr": 11,
+    "violin_simulation": 12,
+    "viola_simulation": 13,
+    "cello_simulation": 14,
 }
 
 SINE_MIXER_INSTRUMENT2CHANNEL_MAPPING = {"violin": 0, "viola": 1, "cello": 2}
@@ -243,3 +246,5 @@ CONTROLLED_SIGNAL_SCENE = 2
 MIDI_CONTROL_LOGGING_FILE = "MID_CTL_LOGGING"
 
 TERMINAL_LOGGING_SCALING = 1
+
+STRING_SIMULATION_VOLUME = 0.65

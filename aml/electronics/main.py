@@ -227,9 +227,21 @@ if __name__ == "__main__":
     SERVER.start()
 
     if SIMULATION_VERSE:
-        for instr in INPUTS:
+        _RUN_SIMULATION = True
+        for instr, signal in INPUTS.items():
             if instr != "pianoteq":
-                INPUTS[instr] = INPUTS[instr].play(delay=0.25)
+                INPUTS[instr] = signal.play(delay=0.229)
+                track_mixer_number = settings.TRACK2MIXER_NUMBER_MAPPING[
+                    "{}_simulation".format(instr)
+                ]
+                MIXER.addInput(
+                    track_mixer_number, INPUTS[instr],
+                )
+                MIXER.setAmp(
+                    track_mixer_number,
+                    settings.PHYSICAL_OUTPUT2CHANNEL_MAPPING[instr],
+                    settings.STRING_SIMULATION_VOLUME,
+                )
 
         import threading
 
@@ -237,6 +249,8 @@ if __name__ == "__main__":
             for message in mido.MidiFile(
                 "{}/keyboard/keyboard_simulation.midi".format(VERSE_PATH)
             ).play():
+                if not _RUN_SIMULATION:
+                    break
                 SERVER.addMidiEvent(*message.bytes())
 
         MIDI_PLAYER = threading.Thread(target=_play_midi_file)
@@ -251,6 +265,7 @@ if __name__ == "__main__":
     PIANOTEQ_PROCESS.terminate()
 
     if SIMULATION_VERSE:
+        _RUN_SIMULATION = False
         MIDI_PLAYER.join(0)
 
     subprocess.run("performance_off.sh", shell=True)

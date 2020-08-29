@@ -14,7 +14,7 @@ if __name__ == "__main__":
     from aml.trackmaker import keyboard
 
     class KenongSampleMaker(synthesis.BasedCsoundEngine):
-        kenong_samples_path = "aml/electronics/kenong_samples"
+        kenong_samples_path = "aml/electronics/samples/kenong"
         original_kenong_samples_path = "{}/original".format(kenong_samples_path)
         adapted_kenong_samples_path = "{}/adapted".format(kenong_samples_path)
 

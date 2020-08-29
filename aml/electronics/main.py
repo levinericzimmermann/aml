@@ -1,3 +1,29 @@
+"""The main file starts the live electronic program for 'kagem Karina'.
+
+The program can be exited through stoping and exiting the pyo server gui.
+Different flags can be added when starting the program:
+
+    --channels
+        str {mono, sterep, quadraphonic, multichannel}
+        default: multichannel
+
+    --keyboard
+        bool
+        default: False
+
+    --logging
+        bool
+        default: True
+
+    --simulation
+        str {opening, 1, 5, closing}
+        default: None
+
+    --spectrum
+        bool
+        default: False
+"""
+
 if __name__ == "__main__":
     import argparse
     import logging
@@ -9,7 +35,6 @@ if __name__ == "__main__":
     import pyo
 
     import loclog
-    import midi
     import mixing
     import pianoteq
     import settings
@@ -22,11 +47,13 @@ if __name__ == "__main__":
     PARSER.add_argument("--channels", type=str, default="multichannel")
     PARSER.add_argument("--logging", type=bool, default=True)
     PARSER.add_argument("--keyboard", type=bool, default=False)
+    PARSER.add_argument("--spectrum", type=bool, default=False)
     PARSED_ARGS = PARSER.parse_args()
     SIMULATION_VERSE = PARSED_ARGS.simulation
     CHANNELS = PARSED_ARGS.channels
     SHOW_LOGGING = PARSED_ARGS.logging
     ADD_KEYBOARD = PARSED_ARGS.keyboard
+    ADD_SPECTRUM = PARSED_ARGS.spectrum
 
     # start performance mode
     subprocess.run("performance_on.sh", shell=True)
@@ -39,12 +66,19 @@ if __name__ == "__main__":
     PIANOTEQ_PROCESS = subprocess.Popen(
         [
             "pianoteq",
+            # basic preset average Harp
             "--preset",
             "Concert Harp Daily",
+            # tuning fxp
             "--fxp",
             "aml.fxp",
+            # keyboard / velocity fxp
+            "--fxp",
+            "standard-velocity.mfxp",
+            # set midimapping
             "--midimapping",
             "complete",
+            # increase performance
             "--multicore",
             "max",
         ]
@@ -73,6 +107,8 @@ if __name__ == "__main__":
 
     # starting server
     SERVER.boot()
+
+    import midi
 
     # making final mixer
     MIXER = pyo.Mixer(outs=8, chnls=1)
@@ -162,6 +198,24 @@ if __name__ == "__main__":
             track_mixer_number, settings.PHYSICAL_OUTPUT2CHANNEL_MAPPING[instrument], 1
         )
 
+    for (
+        physical_output,
+        sine_mixer_channel,
+    ) in settings.SINE_TO_RADIO_MIXER_INSTRUMENT2CHANNEL_MAPPING.items():
+        track_mixer_number = (
+            settings.TRACK2MIXER_NUMBER_MAPPING[
+                "sine_{}".format(physical_output.split("_")[1])
+            ],
+        )
+        MIXER.addInput(
+            track_mixer_number, MIDI_SYNTH.sine_radio_mixer[sine_mixer_channel][0],
+        )
+        MIXER.setAmp(
+            track_mixer_number,
+            settings.PHYSICAL_OUTPUT2CHANNEL_MAPPING[physical_output],
+            1,
+        )
+
     logging.info("adding gong sounds to mixer")
     for (
         physical_output,
@@ -212,11 +266,14 @@ if __name__ == "__main__":
         raise NotImplementedError(msg)
 
     MIXSYSTEM = mixing.MixSystem(
-        master_out=(MIXER, 0, 1),
-        strings=(STRING_PROCESSER.strings_mixer, 0, 1),
-        gong=(MIDI_SYNTH.gong_mixer, 0, 2),
-        pianoteq=(INPUTS["pianoteq"], 0, 6),
-        transducer=(MIDI_SYNTH.sine_mixer, 0, 0.35),
+        ("master_out", (MIXER, 0, 0.5, "slider")),
+        ("strings", (STRING_PROCESSER.strings_mixer, 0, 1, "slider")),
+        ("gong", (MIDI_SYNTH.gong_mixer, 0, 2, "slider")),
+        ("pianoteq", (INPUTS["pianoteq"], 0, 6, "slider")),
+        # right hand output to radios
+        ("transducer", (MIDI_SYNTH.sine_radio_mixer, 0, 0.25, "slider")),
+        # right hand output to transducer
+        ("transducer", (MIDI_SYNTH.sine_mixer, 0, 0.35, "knob")),
     )
 
     if SHOW_LOGGING:
@@ -230,7 +287,7 @@ if __name__ == "__main__":
         _RUN_SIMULATION = True
         for instr, signal in INPUTS.items():
             if instr != "pianoteq":
-                INPUTS[instr] = signal.play(delay=0.229)
+                INPUTS[instr] = signal.play(delay=0.244)
                 track_mixer_number = settings.TRACK2MIXER_NUMBER_MAPPING[
                     "{}_simulation".format(instr)
                 ]
@@ -239,7 +296,13 @@ if __name__ == "__main__":
                 )
                 MIXER.setAmp(
                     track_mixer_number,
-                    settings.PHYSICAL_OUTPUT2CHANNEL_MAPPING[instr],
+                    settings.PHYSICAL_OUTPUT2CHANNEL_MAPPING[
+                        "radio_{}".format(
+                            ("ll", "lr", "rl", "rr")[
+                                settings.STRING_INSTRUMENT2ROOM_POSITION[instr]
+                            ]
+                        )
+                    ],
                     settings.STRING_SIMULATION_VOLUME,
                 )
 
@@ -255,6 +318,9 @@ if __name__ == "__main__":
 
         MIDI_PLAYER = threading.Thread(target=_play_midi_file)
         MIDI_PLAYER.start()
+
+    if ADD_SPECTRUM:
+        SPECTRUM = pyo.Spectrum(sum((m[0] for m in MIXER)), wintitle="MIXED")
 
     SERVER.gui(locals(), title="aml", exit=False)
 

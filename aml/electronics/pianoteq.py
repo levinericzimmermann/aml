@@ -68,16 +68,24 @@ class Modulator(object):
             pitch_bend_trigger()
             make_ctl_trigger("blooming_energy", 10, 60, 50, 100, 41)
             make_ctl_trigger("blooming_inerita", 30, 100, 5, 10, 42)
-            make_ctl_trigger("impedance", 60, 115, 3, 5, 23)
-            make_ctl_trigger("cut_off", 30, 65, 3, 5, 24)
-            make_pedal_trigger("rattle_pedal", 0.6, 57)
-            make_pedal_trigger("buff_stop_pedal", 0.1, 58)
+            make_ctl_trigger("impedance", 80, 115, 3, 5, 23)
+            make_ctl_trigger("cut_off", 95, 126, 3, 5, 24)
+            make_ctl_trigger("q_factor", 10, 36, 1, 2, 25)
+            make_ctl_trigger("hammer_hard_piano", 7, 11, 1, 2, 9)
+            make_ctl_trigger("hammer_hard_mezzo", 48, 50, 1, 2, 94)
+            make_ctl_trigger("hammer_hard_forte", 88, 93, 1, 2, 95)
+            make_pedal_trigger("rattle_pedal", 0.02, 57)
+            make_pedal_trigger("buff_stop_pedal", 0.05, 58)
             make_pedal_trigger("mozart_rail", 0.1, 67)
 
         self.blooming_energy = 10
         self.blooming_inerita = 30
         self.impedance = 60
-        self.cut_off = 60
+        self.cut_off = 80
+        self.q_factor = 3
+        self.hammer_hard_piano = 0
+        self.hammer_hard_mezzo = 8
+        self.hammer_hard_forte = 15
         self.rattle_pedal = 0
         self.buff_stop_pedal = 0
         self.mozart_rail = 0
@@ -90,6 +98,9 @@ class Modulator(object):
 
         # setting high string length
         self.server.ctlout(26, 105, channel=0, timestamp=0)
+
+        # set less aggressive dynamic parameter
+        self.server.ctlout(118, 32, channel=0, timestamp=0)
 
         self.modulator = pyo.TrigFunc(self.trigger, modulator)
 

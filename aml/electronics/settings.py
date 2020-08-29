@@ -85,9 +85,19 @@ TRACK2MIXER_NUMBER_MAPPING = {
     "violin_simulation": 12,
     "viola_simulation": 13,
     "cello_simulation": 14,
+    "sine_ll": 15,
+    "sine_lr": 16,
+    "sine_rl": 17,
+    "sine_rr": 18,
 }
 
 SINE_MIXER_INSTRUMENT2CHANNEL_MAPPING = {"violin": 0, "viola": 1, "cello": 2}
+SINE_TO_RADIO_MIXER_INSTRUMENT2CHANNEL_MAPPING = {
+    "radio_ll": 0,
+    "radio_lr": 1,
+    "radio_rl": 2,
+    "radio_rr": 3,
+}
 
 GONG_MIXER2CHANNEL_MAPPING = {
     "radio_ll": 0,
@@ -248,3 +258,9 @@ MIDI_CONTROL_LOGGING_FILE = "MID_CTL_LOGGING"
 TERMINAL_LOGGING_SCALING = 1
 
 STRING_SIMULATION_VOLUME = 0.65
+
+KEYBOARD_PEDAL_CTRL_NUMBER = 64
+KEYBOARD_CHANNEL = 1
+
+# lowest velocity that will get send to pianoteq
+MIN_VELOCITY_TO_PIANOTEQ = 2

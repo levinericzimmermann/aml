@@ -1,3 +1,5 @@
+"""This module adds support for the Korg nanoKontrol as a mixing device."""
+
 import pyo
 
 import settings
@@ -12,11 +14,12 @@ class MixHelper(object):
         strip_number: int,
         min_vol_scale: float = 0,
         max_vol_scale: float = 2,
+        type_: str = "slider",
     ):
         self.name = name
         self.mixer = mixer
         vc_channel, vc_ctl_number = settings.KORG_NANOCONTROL2CONTROL_NUMBER[
-            "slider{}{}".format(scene_number, strip_number)
+            "{}{}{}".format(type_, scene_number, strip_number)
         ]
         volume_controller = pyo.Midictl(
             vc_ctl_number,
@@ -27,11 +30,10 @@ class MixHelper(object):
         )
         portamento = pyo.Port(volume_controller, risetime=0.075, falltime=0.0075)
         self.mixer.mul = portamento
-        # self.mixer.ctrl(title=name, map_list=[pyo.SLMapMul(init=1)])
 
 
 class MixSystem(object):
-    def __init__(self, **name_mixer_pair):
+    def __init__(self, *name_mixer_pair):
         self.mix_helpers = tuple(
             MixHelper(
                 mix_data[0],
@@ -40,7 +42,8 @@ class MixSystem(object):
                 settings.CONTROLLED_SIGNAL2KORG_NANOCONTROL_STRIP[name],
                 mix_data[1],
                 mix_data[2],
+                mix_data[3],
             )
-            for name, mix_data in name_mixer_pair.items()
+            for name, mix_data in name_mixer_pair
         )
         # TODO(add Mute/Solo-button functionality)

@@ -91,16 +91,17 @@ class MidiDataLogger(LogTermLogger):
         self._path = settings.MIDI_CONTROL_LOGGING_FILE
         self._last_ctl_data = (None, None)
         self._last_note_data = (None, None, None)
+        self._last_note_off_data = (None, None)
         self._title = "MIDI-DATA-LOGGING"
         self._rewrite()
 
         self._process = utility.logfile(
-            self._path, x=80, y=3, xoff="+0", yoff="-430", title=self._title,
+            self._path, x=80, y=4, xoff="+0", yoff="-430", title=self._title,
         )
 
         # Function called by CtlScan2 object.
         def scanner(ctlnum, midichnl):
-            self._last_ctl_data = (ctlnum, midichnl)
+            self._last_ctl_data = (midichnl, ctlnum)
             self._rewrite()
 
         # Listen to controller input.
@@ -115,11 +116,18 @@ class MidiDataLogger(LogTermLogger):
                 "NOTE-ON-MSG --- voice: '{}', midi-pitch'{}', velocity: '{}'".format(
                     *self._last_note_data
                 ),
+                "NOTE-OFF-MSG --- voice: '{}', midi-pitch'{}'".format(
+                    *self._last_note_off_data
+                ),
             ]
             f.write("\n".join(data) + "\n")
 
     def load_note_on_data(self, voice: int, midi_note: int, velocity: float) -> None:
         self._last_note_data = (voice, midi_note, velocity)
+        self._rewrite()
+
+    def load_note_off_data(self, voice: int, midi_note: int) -> None:
+        self._last_note_off_data = (voice, midi_note)
         self._rewrite()
 
 

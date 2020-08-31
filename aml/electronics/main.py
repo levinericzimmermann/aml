@@ -1,10 +1,12 @@
-"""The main file starts the live electronic program for 'kagem Karina'.
+"""Live electronic program for 'kagem Karina'.
 
+May be started with 'python3 main.py'.
 The program can be exited through stoping and exiting the pyo server gui.
+
 Different flags can be added when starting the program:
 
     --channels
-        str {mono, sterep, quadraphonic, multichannel}
+        str {mono, stereo, quadraphonic, multichannel}
         default: multichannel
 
     --keyboard
@@ -34,6 +36,7 @@ if __name__ == "__main__":
 
     import pyo
 
+    import cues
     import loclog
     import mixing
     import pianoteq
@@ -97,7 +100,6 @@ if __name__ == "__main__":
     SERVER = pyo.Server(
         audio="jack",
         midi="jack",
-        # nchnls={"mono": 1, "stereo": 2, "quadraphonic": 4, "multichannel": 8}[CHANNELS],
         nchnls=len(settings.PHYSICAL_OUTPUT2CHANNEL_MAPPING),
     )
 
@@ -112,7 +114,6 @@ if __name__ == "__main__":
 
     # making final mixer
     MIXER = pyo.Mixer(outs=8, chnls=1)
-    # MIXER.ctrl(title="master-out")
 
     logging.info("getting inputs")
     if SIMULATION_VERSE:
@@ -151,7 +152,11 @@ if __name__ == "__main__":
     if ADD_KEYBOARD:
         MIDI_SYNTH.notes.keyboard()
 
-    logging.info("making string - input analysis objects")
+    ###############################################################################
+    #                   making live-electronic modules & cues                     #
+    ###############################################################################
+
+    logging.info("generating live electronic modules")
     STRINGS = {
         instrument: strings.String(signal)
         for instrument, signal in INPUTS.items()
@@ -160,28 +165,19 @@ if __name__ == "__main__":
 
     STRING_PROCESSER = strings.StringProcesser(STRINGS, MIDI_SYNTH)
 
+    CUE_ORGANISER = cues.CueOrganiser((STRING_PROCESSER,))
+
+    # add cues
+    CUE_ORGANISER.append(cues.Cue(strings=[]))
+    CUE_ORGANISER.append(cues.Cue())
+    CUE_ORGANISER.append(cues.Cue(strings=[]))
+
     ###############################################################################
     #                       adding signals to master out                          #
     ###############################################################################
 
-    logging.info("adding strings sounds to mixer")
-    for (
-        physical_output,
-        string_mixer_channel,
-    ) in settings.STRING_MIXER2CHANNEL_MAPPING.items():
-        track_mixer_number = (
-            settings.TRACK2MIXER_NUMBER_MAPPING[
-                "strings_{}".format(physical_output.split("_")[1])
-            ],
-        )
-        MIXER.addInput(
-            track_mixer_number, STRING_PROCESSER.strings_mixer[string_mixer_channel][0],
-        )
-        MIXER.setAmp(
-            track_mixer_number,
-            settings.PHYSICAL_OUTPUT2CHANNEL_MAPPING[physical_output],
-            1,
-        )
+    logging.info("adding live electronic modules")
+    CUE_ORGANISER.add_modules_to_mixer(MIXER)
 
     logging.info("adding transducer sounds to mixer")
     for (
@@ -267,7 +263,7 @@ if __name__ == "__main__":
 
     MIXSYSTEM = mixing.MixSystem(
         ("master_out", (MIXER, 0, 0.5, "slider")),
-        ("strings", (STRING_PROCESSER.strings_mixer, 0, 1, "slider")),
+        ("strings", (STRING_PROCESSER.mixer, 0, 1, "slider")),
         ("gong", (MIDI_SYNTH.gong_mixer, 0, 2, "slider")),
         ("pianoteq", (INPUTS["pianoteq"], 0, 6, "slider")),
         # right hand output to radios
@@ -276,11 +272,13 @@ if __name__ == "__main__":
         ("transducer", (MIDI_SYNTH.sine_mixer, 0, 0.35, "knob")),
     )
 
-    if SHOW_LOGGING:
-        logging.info("Found midi devices...")
-        pyo.pm_list_devices()
+    # WORKS ONLY WITH PORTMIDI, BUT NOT WITH JACKMIDI! TODO(add possibility to list
+    # midi devices with jack-midi)
+    # if SHOW_LOGGING:
+    #     logging.info("Found midi devices...")
+    #     pyo.pm_list_devices()
 
-    logging.info("starting gui")
+    logging.info("starting server & gui")
     SERVER.start()
 
     if SIMULATION_VERSE:
@@ -327,6 +325,7 @@ if __name__ == "__main__":
     INPUT_METER.close()
     MIDI_DATA_LOGGER.close()
     HTOP_LOGGER.close()
+    CUE_ORGANISER.close()
 
     PIANOTEQ_PROCESS.terminate()
 

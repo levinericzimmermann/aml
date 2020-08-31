@@ -287,7 +287,9 @@ class GongGenerator(object, metaclass=_GongSamplerMetaClass):
         self.table_reads = [
             pyo.TableRead(table, freq=table.getRate(),) for table in self.snd_tables[0]
         ]
-        self.processed_tables = self.table_reads
+        self.processed_tables = [
+            pyo.ButLP(table_read, freq=6000) for table_read in self.table_reads
+        ]
         self.spatialised_tables = [
             pyo.Mix(
                 signal, voices=4, mul=[self.fader * spat_value for spat_value in spat]
@@ -336,18 +338,22 @@ class GongGenerator(object, metaclass=_GongSamplerMetaClass):
         self.generator.stop()
 
 
+class ThaiGongGenerator(GongGenerator):
+    _path = "samples/thaigongs/adapted"
+
+
 class KenongGenerator(GongGenerator):
     min_vol = 0.07
-    max_vol = 0.9
+    max_vol = 0.95
 
-    min_filter_freq = 800
-    max_filter_freq = 2000
+    min_filter_freq = 850
+    max_filter_freq = 2500
     n_steps = 1000
     filter_scale = tuple(
         map(float, np.geomspace(min_filter_freq, max_filter_freq, n_steps))
     )
     max_value_for_filter = 0.6
-    max_max_filter_freq = 3000
+    max_max_filter_freq = 4000
     n_filter_stages = 3
 
     _path = "samples/kenong/adapted"
@@ -378,15 +384,16 @@ class KenongGenerator(GongGenerator):
 
 
 class BellPlateGenerator(KenongGenerator):
-    min_vol = 0.07
-    max_vol = 0.8
+    min_vol = 0.05
+    max_vol = 0.78
 
     _path = "samples/bellplate/adapted"
     n_filter_stages = 5
 
-    min_filter_freq = 500
+    min_filter_freq = 430
     max_filter_freq = 1250
-    max_value_for_filter = 0.7
+    max_value_for_filter = 0.8
+    max_max_filter_freq = 2000
     n_steps = 1000
     filter_scale = tuple(
         map(float, np.geomspace(min_filter_freq, max_filter_freq, n_steps))
@@ -395,7 +402,7 @@ class BellPlateGenerator(KenongGenerator):
 
 class GongSynthGenerator(PolySynthGenerator):
     def _make_available_generators(self) -> tuple:
-        return (GongGenerator(),)
+        return (GongGenerator(), ThaiGongGenerator())
 
     def out(
         self, midi_note: int, velocity: float, synth_type: int, spatialisation: tuple
@@ -417,8 +424,8 @@ class KenongSynthGenerator(GongSynthGenerator):
 
 
 class GongSynth(PolySynth):
-    # repeating Javanese gong samples
-    _available_types_infit = infit.Cycle((0,))
+    # alternating between Javanese and Thai Gong samples
+    _available_types_infit = infit.Cycle((0, 1))
     _generator_class = GongSynthGenerator
     _nchnls_per_generator = 4
 
@@ -459,7 +466,7 @@ class GongSynth(PolySynth):
 
 class KenongSynth(GongSynth):
     _generator_class = KenongSynthGenerator
-    _available_types_infit = infit.Cycle((0, 1))
+    _available_types_infit = infit.ActivityLevel(5)
 
 
 #########################################################################
@@ -494,7 +501,6 @@ class MidiSynth(object):
         self.sine_mixer = pyo.Mixer(outs=3, chnls=1, mul=0.3)
         self.sine_radio_mixer = pyo.Mixer(outs=4, chnls=1, mul=0.3)
         self.gong_mixer = pyo.Mixer(outs=4, chnls=1, time=0.05, mul=1)
-        # self.gong_mixer.mul = 1
 
         self.transducer_synth = TransducerSynth(self._n_voices_for_transducer_synth)
         self.gong_synth = GongSynth(self._n_voices_for_gong_synth)

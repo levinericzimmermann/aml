@@ -28,7 +28,11 @@ class MixHelper(object):
             init=min_vol_scale + ((max_vol_scale - min_vol_scale) * 0.5),
             channel=vc_channel,
         )
-        portamento = pyo.Port(volume_controller, risetime=0.075, falltime=0.0075)
+        mute_channel, mute_ctl_number = settings.KORG_NANOCONTROL2CONTROL_NUMBER[
+            "button{}{}2".format(scene_number, strip_number)
+        ]
+        muter = pyo.Midictl(mute_ctl_number, 1, 0, init=1, channel=mute_channel)
+        portamento = pyo.Port(volume_controller * muter, risetime=0.075, falltime=0.0075)
         self.mixer.mul = portamento
 
 

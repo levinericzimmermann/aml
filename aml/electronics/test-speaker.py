@@ -27,7 +27,7 @@ if __name__ == "__main__":
     subprocess.run("performance_on.sh", shell=True, stdout=subprocess.DEVNULL)
 
     # start jack
-    subprocess.run("qjackctl -s &", shell=True, stdout=subprocess.DEVNULL)
+    subprocess.run("qjackctl -a patchbay-new.xml -s &", shell=True)
     time.sleep(0.5)
 
     SERVER = pyo.Server(audio="jack", midi="jack", nchnls=N_CHANNELS,)

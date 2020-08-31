@@ -96,7 +96,7 @@ class MidiDataLogger(LogTermLogger):
         self._rewrite()
 
         self._process = utility.logfile(
-            self._path, x=80, y=4, xoff="+0", yoff="-430", title=self._title,
+            self._path, x=80, y=4, xoff="+0", yoff="-30", title=self._title,
         )
 
         # Function called by CtlScan2 object.
@@ -137,3 +137,70 @@ class HtopLogger(TermLogger):
         self._process = utility.load_terminal(
             "htop", x=70, y=19, xoff="-0", yoff="-0", title="HTOP"
         )
+
+
+class ModuleLogger(LogTermLogger):
+    def __init__(self, cue_organiser):
+        self._cue_organiser = cue_organiser
+        self._path = settings.ACTIVE_MODULE_LOGGING_FILE
+        self._title = "ACTIVE-MODULES-LOGGING"
+        self._rewrite()
+
+        self._process = utility.logfile(
+            self._path,
+            x=40,
+            y=len(self.modules) + 1,
+            xoff="+0",
+            yoff="-650",
+            title=self._title,
+        )
+
+        self._rewrite_func = pyo.TrigFunc(
+            [
+                self._cue_organiser.trigger_play_cue,
+                self._cue_organiser.trigger_stop_cue,
+            ],
+            self._rewrite,
+        )
+
+    @property
+    def modules(self) -> tuple:
+        return self._cue_organiser.modules
+
+    def _rewrite(self) -> None:
+        with open(self._path, "w") as f:
+            data = []
+            for module in self.modules:
+                line = "{}: {}".format(module.name, ("off", "ON")[module.isPlaying])
+                data.append(line)
+
+            f.write("\n".join(data) + "\n")
+
+
+class CueLogger(LogTermLogger):
+    def __init__(self, cue_organiser):
+        self._cue_organiser = cue_organiser
+        self._path = settings.CUE_LOGGING_FILE
+        self._title = "CUE-LOGGING"
+        self._rewrite()
+
+        self._process = utility.logfile(
+            self._path, x=20, y=3, xoff="+0", yoff="-280", title=self._title,
+        )
+
+        self._rewrite_func = pyo.TrigFunc(
+            [
+                self._cue_organiser.trigger_play_cue,
+                self._cue_organiser.trigger_stop_cue,
+                self._cue_organiser.trigger_choosen_cue,
+            ],
+            self._rewrite,
+        )
+
+    def _rewrite(self) -> None:
+        with open(self._path, "w") as f:
+            data = [
+                "CUE-TO-CHOOSE: {}".format(self._cue_organiser._current_potential_cue),
+                "ACTIVE CUE: {}".format(self._cue_organiser._current_active_cue),
+            ]
+            f.write("\n".join(data) + "\n")

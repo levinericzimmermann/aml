@@ -5,6 +5,7 @@ if __name__ == "__main__":
 
     import pyo
 
+    from mu.mel import ji
     from mu.utils import tools
 
     from mutools import synthesis
@@ -12,22 +13,22 @@ if __name__ == "__main__":
     from aml import globals_
     from aml.trackmaker import keyboard
 
-    class KempulSampleMaker(synthesis.BasedCsoundEngine):
-        kempul_samples_path = "aml/electronics/samples/kempul"
-        original_kempul_samples_path = "{}/original".format(kempul_samples_path)
-        adapted_kempul_samples_path = "{}/adapted".format(kempul_samples_path)
+    class ThaigongSampleMaker(synthesis.BasedCsoundEngine):
+        thaigong_samples_path = "aml/electronics/samples/thaigongs"
+        original_thaigong_samples_path = "{}/original/strucked".format(thaigong_samples_path)
+        adapted_thaigong_samples_path = "{}/adapted".format(thaigong_samples_path)
 
         # detect samples with their respective frequencies
         samples = {}
-        for sample in os.listdir(original_kempul_samples_path):
+        for sample in os.listdir(original_thaigong_samples_path):
             if sample[-3:] == "wav":
                 sample_name_without_ending = sample[:-4]
                 sample_json_name = "{}.json".format(sample_name_without_ending)
                 complete_sample_path = "{}/{}".format(
-                    original_kempul_samples_path, sample
+                    original_thaigong_samples_path, sample
                 )
                 complete_sample_json_path = "{}/{}".format(
-                    original_kempul_samples_path, sample_json_name
+                    original_thaigong_samples_path, sample_json_name
                 )
                 frequency = float(
                     tuple(json.load(open(complete_sample_json_path, "r")).values())[0][
@@ -38,7 +39,7 @@ if __name__ == "__main__":
 
         available_frequencies = tuple(sorted(samples.keys()))
 
-        cname = ".kempul_sample_maker"
+        cname = ".thaigong_sample_maker"
         tail = 4
 
         freq_used_counter = collections.Counter({freq: 0 for freq in samples})
@@ -75,7 +76,7 @@ if __name__ == "__main__":
                 "nchnls=2\n",
                 "instr 1",
                 "kvol linseg 0, 0.3, 1, 0.2, 0.5, 3.4, 0",
-                "asine poscil3 0.385 * kvol, {}".format(self.frequency),
+                "asine poscil3 0.32 * kvol, {}".format(self.frequency),
                 'asig0, asig1 diskin2 "{}", {}, 0, 0, 0, 4'.format(
                     self.choosen_sample, self.pitch_factor
                 ),
@@ -89,11 +90,13 @@ if __name__ == "__main__":
             return "i1 0 {}".format(self.duration)
 
         def render(self):
-            super().render("{}/{}".format(self.adapted_kempul_samples_path, self.index))
+            super().render("{}/{}".format(self.adapted_thaigong_samples_path, self.index))
 
     # generate adapted sound files
     pitches = sorted(keyboard.MIDI_NOTE2JI_PITCH_PER_ZONE["gong"].values())
     for idx, pitch in enumerate(pitches):
         freq = float(pitch) * globals_.CONCERT_PITCH
-        ksm = KempulSampleMaker(idx, freq)
+        if pitch.normalize() > ji.r(3, 2):
+            freq /= 2
+        ksm = ThaigongSampleMaker(idx, freq)
         ksm.render()

@@ -1,4 +1,4 @@
-"""This file contains all global settings.
+"""This file contains all global settings (config file).
 
 Depending on the performance situation its values could be adapted.
 """
@@ -106,7 +106,9 @@ GONG_MIXER2CHANNEL_MAPPING = {
     "radio_rr": 3,
 }
 
-STRING_MIXER2CHANNEL_MAPPING = {
+# every life electronic module returns 4 channels,
+# that get distributed on the 4 radios on the stage
+MODULE_MIXER2CHANNEL_MAPPING = {
     "radio_ll": 0,
     "radio_lr": 1,
     "radio_rl": 2,
@@ -193,12 +195,14 @@ KORG_NANOCONTROL2CONTROL_NUMBER = {
     "button221": (1, 93),
     "button222": (1, 94),
     "button231": (1, 95),
-    # "button232": (1, 96),  # somehow couldn't be dected
-    # "button241": (1, 97),
-    # "button242": (1, 98),
-    # "button251": (1, 99),
-    # "button252": (1, 100),
-    # "button261": (1, 101),
+    ###
+    "button232": (1, 96),  # somehow couldn't be dected in
+    "button241": (1, 97),  # pianoteq, but works with pyo
+    "button242": (1, 98),
+    "button251": (1, 99),
+    "button252": (1, 100),
+    "button261": (1, 101),
+    ###
     "button262": (1, 102),
     "button271": (1, 103),
     "button272": (1, 104),
@@ -253,7 +257,9 @@ SOLO_BUTTON, MUTE_BUTTON = 1, 2
 
 CONTROLLED_SIGNAL_SCENE = 2
 
-MIDI_CONTROL_LOGGING_FILE = "MID_CTL_LOGGING"
+MIDI_CONTROL_LOGGING_FILE = "MID_CTRL_LOGGING"
+ACTIVE_MODULE_LOGGING_FILE = "ACTIVE_MODULES_LOGGING"
+CUE_LOGGING_FILE = "CUE_LOGGING"
 
 TERMINAL_LOGGING_SCALING = 1
 

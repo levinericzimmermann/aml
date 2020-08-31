@@ -30,7 +30,9 @@ from aml import complex_meters
 from aml import comprovisation
 from aml import globals_
 
-from aml.electronics import midi as _right_hand_synth
+# from aml.electronics import midi as _right_hand_synth
+# TODO(update _right_hand_synth!)
+_right_hand_synth = None
 
 from aml.trackmaker import general
 

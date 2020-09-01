@@ -366,7 +366,9 @@ class VerseMaker(mus.SegmentMaker):
         for bar, has_double_bar_line in zip(staff, double_barlines_positions):
             if has_double_bar_line:
                 try:
-                    abjad.attach(abjad.BarLine(".", format_slot="absolute_before"), bar[0])
+                    abjad.attach(
+                        abjad.BarLine(".", format_slot="absolute_before"), bar[0]
+                    )
                 # don't attach if there is already another bar line (perhaps from repeats)
                 except abjad.PersistentIndicatorError:
                     pass
@@ -385,27 +387,84 @@ class VerseMaker(mus.SegmentMaker):
 
         return tuple(adapted_by_used_areas)
 
+    def make_stochastic_analysis(self) -> dict:
+        """Analyse for every pitch how often any other pitch appeared."""
+
+        # (1) generate poly object with all relevant musical information
+        poly_object = old.PolyLine([])
+        for string in globals_.INSTRUMENT_NAME2ADAPTED_INSTRUMENT:
+            poly_object.append(getattr(self, string).musdat[1])
+
+        poly_object.extend(self.keyboard.musdat[1:])
+
+        # (2) cut poly object in small slices
+        grid_size = fractions.Fraction(1, 64)
+        duration = poly_object.duration
+        poly_slices = [
+            poly_object.cut_up_by_time(start, start + grid_size)
+            for start in map(lambda n: n * grid_size, range(int(duration // grid_size)))
+        ]
+
+        # (3) count pitch combinations
+        pitch_classes = functools.reduce(
+            operator.add,
+            tuple(
+                tuple(p.normalize() for p in scale)
+                for name, scale in globals_.SCALE_PER_INSTRUMENT.items()
+            ),
+        )
+        absolute_likelihoods = {
+            p0: {p1: 0 for p1 in pitch_classes} for p0 in pitch_classes
+        }
+        for slice_ in poly_slices:
+            active_pitches = set([])
+            for line in slice_:
+                for item in line:
+                    if item.pitch:
+                        for pitch in item.pitch:
+                            active_pitches.add(pitch.normalize())
+
+            for p0 in active_pitches:
+                for p1 in active_pitches:
+                    if p0 != p1:
+                        absolute_likelihoods[p0][p1] += 1
+
+        relative_likelihoods = {}
+        for pitch, likelihood_for_other_pitches in absolute_likelihoods.items():
+            n_appearing_pairs = sum(likelihood_for_other_pitches.values())
+            relative_likelihoods.update(
+                {
+                    pitch: {
+                        p: (n / n_appearing_pairs if p != pitch else 1)
+                        for p, n in likelihood_for_other_pitches.items()
+                    }
+                }
+            )
+
+        def translate_pitch(pitch: ji.JIPitch) -> tuple:
+            return pitch.numerator, pitch.denominator
+
+        translated_relative_likelihood = tuple(
+            (
+                translate_pitch(p),
+                tuple(
+                    (translate_pitch(subp), likelihood)
+                    for subp, likelihood in likelihoods.items()
+                ),
+            )
+            for p, likelihoods in relative_likelihoods.items()
+        )
+
+        with open(
+            "{}/{}.json".format(globals_.STOCHASTIC_PITCH_ANALYSIS_PATH, self.verse),
+            "w",
+        ) as f:
+            json.dump(translated_relative_likelihood, f)
+
     def __call__(self) -> Verse:
+        # self.make_stochastic_analysis()
+
         verse = super().__call__()
-
-        """
-        # add special bar lines at each start of a new loop
-        double_barlines_positions = self._find_double_barlines_positions()
-        for track_name in self.orchestration:
-            if track_name in ("violin", "viola", "cello"):
-                staves_to_attach_double_barlines = getattr(verse, track_name).abjad[1:2]
-            else:
-                staves_to_attach_double_barlines = getattr(verse, track_name).abjad
-
-            for staff in staves_to_attach_double_barlines:
-                if type(staff) == abjad.StaffGroup:
-                    for sub_staff in staff:
-                        self._attach_double_barlines(
-                            sub_staff, double_barlines_positions
-                        )
-                else:
-                    self._attach_double_barlines(staff, double_barlines_positions)
-        """
 
         # attach verse attribute (name or number of verse) to resulting verse object
         verse.verse = self.verse

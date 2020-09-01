@@ -41,6 +41,7 @@ if __name__ == "__main__":
     import mixing
     import pianoteq
     import settings
+    import spat
     import strings
 
     # adding possibility for testing the program with stereo mode and with stings
@@ -98,9 +99,7 @@ if __name__ == "__main__":
         logging.basicConfig(level=logging.INFO)
 
     SERVER = pyo.Server(
-        audio="jack",
-        midi="jack",
-        nchnls=len(settings.PHYSICAL_OUTPUT2CHANNEL_MAPPING),
+        audio="jack", midi="jack", nchnls=len(settings.PHYSICAL_OUTPUT2CHANNEL_MAPPING),
     )
 
     # listening / sending to all midi output devices
@@ -110,6 +109,7 @@ if __name__ == "__main__":
     # starting server
     SERVER.boot()
 
+    import gender_player
     import midi
 
     # making final mixer
@@ -157,6 +157,14 @@ if __name__ == "__main__":
     ###############################################################################
 
     logging.info("generating live electronic modules")
+
+    BALANCED_SPAT_MAKER = spat.BalancedSpatMaker(
+        [
+            MIXER[settings.PHYSICAL_OUTPUT2CHANNEL_MAPPING[physical_output]][0]
+            for physical_output in ("radio_ll", "radio_lr", "radio_rl", "radio_rr")
+        ]
+    )
+
     STRINGS = {
         instrument: strings.String(signal)
         for instrument, signal in INPUTS.items()
@@ -164,13 +172,14 @@ if __name__ == "__main__":
     }
 
     STRING_PROCESSER = strings.StringProcesser(STRINGS, MIDI_SYNTH)
+    GENDER_PLAYER = gender_player.GenderPlayer(STRINGS, MIDI_SYNTH, BALANCED_SPAT_MAKER)
 
-    CUE_ORGANISER = cues.CueOrganiser((STRING_PROCESSER,))
+    CUE_ORGANISER = cues.CueOrganiser((STRING_PROCESSER, GENDER_PLAYER))
 
     # add cues
-    CUE_ORGANISER.append(cues.Cue(strings=[]))
+    CUE_ORGANISER.append(cues.Cue(strings={}, gender_sample_player={}))
     CUE_ORGANISER.append(cues.Cue())
-    CUE_ORGANISER.append(cues.Cue(strings=[]))
+    CUE_ORGANISER.append(cues.Cue(strings={}))
 
     ###############################################################################
     #                       adding signals to master out                          #
@@ -270,6 +279,8 @@ if __name__ == "__main__":
         ("transducer", (MIDI_SYNTH.sine_radio_mixer, 0, 0.25, "slider")),
         # right hand output to transducer
         ("transducer", (MIDI_SYNTH.sine_mixer, 0, 0.35, "knob")),
+        # samples triggered by string onsets
+        ("gender_player", (GENDER_PLAYER.mixer, 0, 1, "slider")),
     )
 
     # WORKS ONLY WITH PORTMIDI, BUT NOT WITH JACKMIDI! TODO(add possibility to list

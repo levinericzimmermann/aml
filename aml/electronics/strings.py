@@ -28,6 +28,7 @@ class String(object):
             add=0,
         )
         self.pitch_tracker.stop()
+        self.attack_detector.stop()
         self.processed_signal = signal
 
 

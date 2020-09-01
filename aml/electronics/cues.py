@@ -13,11 +13,22 @@ class Cue(object):
 
     def assign_parent(self, parent) -> None:
         self._parent = parent
+        available_modules = tuple(mod.name for mod in self._parent.modules)
+        for module_name in self._module_arguments_pairs:
+            try:
+                assert module_name in available_modules
+            except AssertionError:
+                msg = (
+                    "Module '{}' couldn't be found in parent! Maybe there is a typo?"
+                    .format(module_name)
+                )
+                msg += " Known modules are {}.".format(available_modules)
+                raise KeyError(msg)
 
     def play(self) -> None:
         for module in self._parent.modules:
             try:
-                module.play(*self._module_arguments_pairs[module.name])
+                module.play(**self._module_arguments_pairs[module.name])
             except KeyError:
                 module.stop()
 

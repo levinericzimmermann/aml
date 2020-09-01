@@ -2,6 +2,7 @@
 
 import operator
 import os
+import termcolor
 
 import pyo
 
@@ -171,7 +172,12 @@ class ModuleLogger(LogTermLogger):
         with open(self._path, "w") as f:
             data = []
             for module in self.modules:
-                line = "{}: {}".format(module.name, ("off", "ON")[module.isPlaying])
+                line = "{}: {}".format(
+                    termcolor.colored(module.name, attrs=["bold"]),
+                    ("off", termcolor.colored("ON", "red", attrs=["bold"]))[
+                        module.isPlaying
+                    ],
+                )
                 data.append(line)
 
             f.write("\n".join(data) + "\n")
@@ -200,7 +206,17 @@ class CueLogger(LogTermLogger):
     def _rewrite(self) -> None:
         with open(self._path, "w") as f:
             data = [
-                "CUE-TO-CHOOSE: {}".format(self._cue_organiser._current_potential_cue),
-                "ACTIVE CUE: {}".format(self._cue_organiser._current_active_cue),
+                "{} {}".format(
+                    termcolor.colored("CUE-TO-CHOOSE:", attrs=["bold"]),
+                    self._cue_organiser._current_potential_cue,
+                ),
+                "{} {}".format(
+                    termcolor.colored("ACTIVE CUE:", attrs=["bold"]),
+                    termcolor.colored(
+                        "{}".format(self._cue_organiser._current_active_cue),
+                        "red",
+                        attrs=["bold"],
+                    ),
+                ),
             ]
             f.write("\n".join(data) + "\n")

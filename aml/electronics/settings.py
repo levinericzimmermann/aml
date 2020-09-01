@@ -89,6 +89,10 @@ TRACK2MIXER_NUMBER_MAPPING = {
     "sine_lr": 16,
     "sine_rl": 17,
     "sine_rr": 18,
+    "gender_sample_player_ll": 19,
+    "gender_sample_player_lr": 20,
+    "gender_sample_player_rl": 21,
+    "gender_sample_player_rr": 22,
 }
 
 SINE_MIXER_INSTRUMENT2CHANNEL_MAPPING = {"violin": 0, "viola": 1, "cello": 2}
@@ -242,7 +246,7 @@ KORG_NANOCONTROL_STRIP2CONTROLLED_SIGNAL = {
     3: "gong",
     4: "pianoteq",
     5: "transducer",
-    6: "gamelan",
+    6: "gender_player",
     7: "tape",
 }
 

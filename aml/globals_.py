@@ -411,6 +411,7 @@ PARTBOOKS_PATH = "{}/partbooks".format(SCORE_PATH)
 INTRODUCTION_PATH = "{}/introduction".format(BUILD_PATH)
 INTRODUCTION_PICTURES_PATH = "{}/pictures".format(INTRODUCTION_PATH)
 COVER_PATH = "aml/cover"
+STOCHASTIC_PITCH_ANALYSIS_PATH = "aml/stochastic_pitch_analysis"
 
 PYO_SERVER = pyo.Server(sr=44100, audio="offline", nchnls=3)
 PYO_SERVER.boot()

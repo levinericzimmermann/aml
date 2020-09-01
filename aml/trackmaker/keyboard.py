@@ -30,11 +30,11 @@ from aml import complex_meters
 from aml import comprovisation
 from aml import globals_
 
+from aml.trackmaker import general
+
 # from aml.electronics import midi as _right_hand_synth
 # TODO(update _right_hand_synth!)
 _right_hand_synth = None
-
-from aml.trackmaker import general
 
 KEYBOARD_SETUP_PATH = "aml/electronics"
 
@@ -268,9 +268,15 @@ KEYBOARD_RATIO2ABJAD_PITCH_PER_ZONE = {
 }
 
 
-print('sine', MIDI_NOTE2JI_PITCH_PER_ZONE['sine'])
-print('')
-print('pt', MIDI_NOTE2JI_PITCH_PER_ZONE['pianoteq'])
+# make a general file for saving midi-tone => ji.Pitch
+MIDI_NOTE2JI_PITCH_PER_ZONE
+with open('{}/midi-note2ji-ratio.json'.format(KEYBOARD_SETUP_PATH), 'w') as f:
+    data = {}
+    for zone, zone_data in MIDI_NOTE2JI_PITCH_PER_ZONE.items():
+        for midi_note, ji_pitch in zone_data.items():
+            data.update({int(midi_note): (ji_pitch.numerator, ji_pitch.denominator)})
+
+    json.dump(data, f)
 
 
 class Keyboard(general.AMLTrack):
@@ -574,7 +580,9 @@ class RightHandKeyboardEngine(synthesis.PyoEngine):
                 occurrences=1,
             ),
             dur=pyo.EventSeq([float(d) for d in self._novent_line.delay]),
-            vol=pyo.EventSeq([float(vol) if vol else 1 for vol in self._novent_line.volume]),
+            vol=pyo.EventSeq(
+                [float(vol) if vol else 1 for vol in self._novent_line.volume]
+            ),
             chnl=pyo.EventSeq(
                 [
                     [

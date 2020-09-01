@@ -4,6 +4,7 @@
 """
 
 import abc
+import collections
 import itertools
 import json
 import os
@@ -14,6 +15,8 @@ import numpy as np
 
 import natsort
 import pyo
+
+from mu.mel import ji
 
 from mu.utils import infit
 from mu.utils import tools
@@ -30,10 +33,20 @@ try:
             int(key): (float(item[0]), item[1]) for key, item in json.load(f).items()
         }
 
+    with open("midi-note2ji-ratio.json", "r") as f:
+        MIDI_NOTE2JI_PITCH = {
+            int(key): ji.r(item[0], item[1]) for key, item in json.load(f).items()
+        }
+
 except FileNotFoundError:
     with open("aml/electronics/midi_note2freq_and_instrument_mapping.json", "r") as f:
         MIDI_NOTE2FREQ_AND_INSTRUMENT_MAPPING = {
             int(key): (float(item[0]), item[1]) for key, item in json.load(f).items()
+        }
+
+    with open("aml/electronics/midi-note2ji-ratio.json", "r") as f:
+        MIDI_NOTE2JI_PITCH = {
+            int(key): ji.r(item[0], item[1]) for key, item in json.load(f).items()
         }
 
 
@@ -470,6 +483,64 @@ class KenongSynth(GongSynth):
 
 
 #########################################################################
+#                   pitch stack classes                                 #
+#########################################################################
+
+
+class TimedObject(object):
+    """Super class for any classes whose init time shall be memorized."""
+
+    def __init__(self):
+        self._init_time = time.time()
+
+    @property
+    def init_time(self) -> float:
+        return self._init_time
+
+
+class TimedPitch(TimedObject):
+    def __init__(self, pitch: ji.JIPitch):
+        super().__init__()
+        self.pitch = pitch
+
+    def __repr__(self):
+        return "TimedPitch({}, {})".format(
+            self.pitch, round(time.time() - self._init_time, 1)
+        )
+
+
+class PitchStack(object):
+    def __init__(self, maxlen: int = 50):
+        self._pitches = collections.deque([], maxlen=maxlen)
+
+    def add(self, pitch: ji.JIPitch) -> None:
+        self._pitches.appendleft(TimedPitch(pitch))
+
+    def __repr__(self) -> str:
+        return "PitchStack{}".format(tuple(self._pitches))
+
+    def __getitem__(self, idx: int) -> TimedPitch:
+        return self._pitches[idx]
+
+    def __iter__(self) -> iter:
+        return iter(self._pitches)
+
+    def get_all_pitches_that_appeared_within_the_last_n_seconds(
+        self, n_seconds: float
+    ) -> tuple:
+        current_time = time.time()
+
+        av_pitches = []
+        for timed_pitch in self:
+            if current_time - timed_pitch.init_time < n_seconds:
+                av_pitches.append(timed_pitch.pitch)
+            else:
+                break
+
+        return tuple(av_pitches)
+
+
+#########################################################################
 #               midi synth class that controls everything               #
 #########################################################################
 
@@ -493,7 +564,6 @@ class MidiSynth(object):
         self.midi_data_logger = midi_data_logger
         self.server = server
         self.previous_hauptstimme_instrument = set([])
-        self._last_trigger_time = time.time()
         self.instrument_change_trigger = pyo.Trig()
 
         self.pianoteq_trigger = pyo.Trig()
@@ -506,6 +576,8 @@ class MidiSynth(object):
         self.gong_synth = GongSynth(self._n_voices_for_gong_synth)
         self.kenong_synth = KenongSynth(self._n_voices_for_kenong_synth)
 
+        self.pitch_stack = PitchStack()
+
         # sending transducer outputs to sine mixer & sine radio mixer
         for n in range(3):
             signal = self.transducer_synth.mixer[0][n]
@@ -513,9 +585,11 @@ class MidiSynth(object):
             self.sine_mixer.setAmp(n, n, 1)
 
             self.sine_radio_mixer.addInput(n, signal)
+
             for m in range(4):
                 # TODO(which amp?)
                 self.sine_mixer.setAmp(n, m, 1)
+                self.sine_radio_mixer.setAmp(n, m, 1)
 
         # sending gong outputs and kenong outputs to gong mixer
         for n, mixer in enumerate((self.kenong_synth.mixer, self.gong_synth.mixer)):
@@ -574,6 +648,13 @@ class MidiSynth(object):
         self.midi_data_logger.load_note_on_data(voice, midi_note, velocity)
 
         synth_type = self._get_synth_type(midi_note)
+
+        try:
+            self.pitch_stack.add(MIDI_NOTE2JI_PITCH[midi_note])
+
+        # only happens in case a midi_note get played that's not defined
+        except KeyError:
+            pass
 
         if synth_type == "pianoteq":
             self.pianoteq_trigger.play()
